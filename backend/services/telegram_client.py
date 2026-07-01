@@ -1,0 +1,155 @@
+﻿from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+import requests
+
+from config import get_settings
+
+
+class TelegramNotConfiguredError(RuntimeError):
+    pass
+
+
+class TelegramSendError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class TelegramStatus:
+    configured: bool
+    bot_configured: bool
+    channel_id: str | None
+    community_chat_id: str | None
+    paid_chat_id: str | None
+    daily_report_enabled: bool
+    community_report_enabled: bool
+    paid_report_enabled: bool
+
+
+def _chunk_message(text: str, limit: int = 3900) -> list[str]:
+    text = text.strip()
+    if not text:
+        return []
+
+    chunks: list[str] = []
+    while len(text) > limit:
+        split_at = text.rfind("\n\n", 0, limit)
+        if split_at < int(limit * 0.5):
+            split_at = text.rfind("\n", 0, limit)
+        if split_at < int(limit * 0.5):
+            split_at = limit
+        chunks.append(text[:split_at].strip())
+        text = text[split_at:].strip()
+    if text:
+        chunks.append(text)
+    return chunks
+
+
+def _mask_channel(channel_id: str | None) -> str | None:
+    if not channel_id:
+        return None
+    if len(channel_id) <= 8:
+        return "***"
+    return f"{channel_id[:4]}...{channel_id[-4:]}"
+
+
+class TelegramClient:
+    def __init__(self, bot_token: str | None = None, channel_id: str | None = None):
+        settings = get_settings()
+        self.bot_token = bot_token if bot_token is not None else settings.telegram_bot_token
+        self.channel_id = channel_id if channel_id is not None else settings.telegram_channel_id
+
+    @property
+    def bot_configured(self) -> bool:
+        return bool(self.bot_token)
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.bot_token and self.channel_id)
+
+    def status(self) -> TelegramStatus:
+        settings = get_settings()
+        return TelegramStatus(
+            configured=self.configured,
+            bot_configured=self.bot_configured,
+            channel_id=_mask_channel(self.channel_id),
+            community_chat_id=_mask_channel(settings.telegram_community_chat_id),
+            paid_chat_id=_mask_channel(settings.telegram_paid_chat_id),
+            daily_report_enabled=settings.telegram_daily_report_enabled,
+            community_report_enabled=settings.telegram_community_report_enabled,
+            paid_report_enabled=settings.telegram_paid_report_enabled,
+        )
+
+    def _request(self, method: str, payload: dict[str, Any] | None = None, *, timeout: int = 15) -> dict[str, Any]:
+        if not self.bot_configured:
+            raise TelegramNotConfiguredError("TELEGRAM_BOT_TOKEN must be configured.")
+
+        url = f"https://api.telegram.org/bot{self.bot_token}/{method}"
+        response = requests.post(url, json=payload or {}, timeout=timeout)
+        try:
+            body = response.json()
+        except ValueError:
+            body = {"description": response.text[:500]}
+
+        if response.status_code >= 400 or not body.get("ok", False):
+            description = body.get("description") or response.text[:500]
+            raise TelegramSendError(f"Telegram {method} failed: {description}")
+        return body
+
+    def send_message(
+        self,
+        text: str,
+        *,
+        chat_id: str | None = None,
+        disable_web_page_preview: bool = True,
+        parse_mode: str | None = None,
+    ) -> list[dict[str, Any]]:
+        target_chat_id = chat_id or self.channel_id
+        if not self.bot_configured or not target_chat_id:
+            raise TelegramNotConfiguredError(
+                "TELEGRAM_BOT_TOKEN and a target chat id must be configured."
+            )
+
+        chunks = _chunk_message(text)
+        if not chunks:
+            return []
+
+        results: list[dict[str, Any]] = []
+        for chunk in chunks:
+            payload: dict[str, Any] = {
+                "chat_id": target_chat_id,
+                "text": chunk,
+                "disable_web_page_preview": disable_web_page_preview,
+            }
+            if parse_mode:
+                payload["parse_mode"] = parse_mode
+            results.append(self._request("sendMessage", payload).get("result", {}))
+        return results
+
+    def set_webhook(
+        self,
+        webhook_url: str,
+        *,
+        secret_token: str | None = None,
+        drop_pending_updates: bool = True,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "url": webhook_url,
+            "drop_pending_updates": drop_pending_updates,
+            "allowed_updates": ["message", "edited_message", "channel_post"],
+        }
+        if secret_token:
+            payload["secret_token"] = secret_token
+        return self._request("setWebhook", payload, timeout=20)
+
+    def delete_webhook(self, *, drop_pending_updates: bool = False) -> dict[str, Any]:
+        return self._request(
+            "deleteWebhook",
+            {"drop_pending_updates": drop_pending_updates},
+            timeout=20,
+        )
+
+    def get_webhook_info(self) -> dict[str, Any]:
+        return self._request("getWebhookInfo", timeout=20)

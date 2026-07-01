@@ -1,0 +1,52 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env.local
+
+# Databases and runtime state
+*.db
+*.sqlite
+*.sqlite3
+backend/agent_invest.db
+backend/data/
+
+# Logs
+*.log
+*.out.log
+*.err.log
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local tunnel/runtime binaries
+cloudflared.exe
+*.exe
+quick-tunnel-empty.yml
+tmp-tunnel.yml
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+*.log.out
+*.out
+*.err

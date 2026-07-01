@@ -1,0 +1,131 @@
+"use client";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Brain, TrendingUp, TrendingDown, Minus, Target, BarChart3, Clock } from "lucide-react";
+import { getPredictions, getAccuracy, type Prediction, type AccuracyStats } from "@/lib/api";
+import { format } from "date-fns";
+
+function DirectionBadge({ direction }: { direction: string }) {
+  const styles: Record<string, string> = {
+    bullish: "bg-emerald-900/50 text-emerald-400 border border-emerald-700",
+    bearish: "bg-red-900/50 text-red-400 border border-red-700",
+    neutral: "bg-slate-700/50 text-slate-400 border border-slate-600",
+  };
+  const icons: Record<string, React.ReactNode> = {
+    bullish: <TrendingUp className="w-3 h-3" />,
+    bearish: <TrendingDown className="w-3 h-3" />,
+    neutral: <Minus className="w-3 h-3" />,
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${styles[direction] ?? styles.neutral}`}>
+      {icons[direction]} {direction}
+    </span>
+  );
+}
+
+function StatCard({ title, value, sub }: { title: string; value: string | number; sub?: string }) {
+  return (
+    <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <p className="text-xs text-slate-400 uppercase tracking-wider">{title}</p>
+      <p className="text-3xl font-bold text-white mt-1">{value}</p>
+      {sub && <p className="text-xs text-slate-500 mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  const [recent, setRecent] = useState<Prediction[]>([]);
+  const [stats, setStats] = useState<AccuracyStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([getPredictions({ limit: 5 }), getAccuracy()])
+      .then(([preds, acc]) => {
+        setRecent(preds);
+        setStats(acc);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+          <Brain className="w-8 h-8 text-sky-400" />
+          Agent Invest Dashboard
+        </h1>
+        <p className="text-slate-400 mt-1">ระบบวิเคราะห์การลงทุนด้วย Multi-Agent AI</p>
+      </div>
+
+      {loading ? (
+        <div className="text-slate-400">กำลังโหลด...</div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard title="การคาดการณ์ทั้งหมด" value={stats?.total ?? 0} />
+            <StatCard title="เทียบผลแล้ว" value={stats?.compared ?? 0} />
+            <StatCard
+              title="ความแม่นยำทิศทาง"
+              value={stats?.compared ? `${(stats.direction_accuracy * 100).toFixed(1)}%` : "-"}
+            />
+            <StatCard
+              title="คะแนนเฉลี่ย"
+              value={stats?.compared ? `${(stats.avg_accuracy_score * 100).toFixed(1)}%` : "-"}
+            />
+          </div>
+
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Clock className="w-5 h-5 text-sky-400" />
+                การคาดการณ์ล่าสุด
+              </h2>
+              <Link href="/predictions" className="text-sky-400 text-sm hover:underline">ดูทั้งหมด →</Link>
+            </div>
+            {recent.length === 0 ? (
+              <p className="text-slate-500 text-sm">ยังไม่มีการคาดการณ์ — <Link href="/analyze" className="text-sky-400 hover:underline">เริ่มวิเคราะห์เลย</Link></p>
+            ) : (
+              <div className="space-y-3">
+                {recent.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/predictions/${p.id}`}
+                    className="flex items-center justify-between p-4 bg-slate-750 hover:bg-slate-700 rounded-lg border border-slate-700 transition-colors"
+                  >
+                    <div className="flex items-center gap-4">
+                      <span className="text-white font-semibold w-20">{p.symbol}</span>
+                      <DirectionBadge direction={p.direction} />
+                      <span className="text-slate-400 text-xs">{p.timeframe}</span>
+                      <span className="text-slate-400 text-xs">conf: {(p.confidence * 100).toFixed(0)}%</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-white text-sm">${p.current_price.toFixed(2)}</div>
+                      <div className="text-slate-500 text-xs">{format(new Date(p.created_at), "dd/MM/yy HH:mm")}</div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Link href="/analyze" className="bg-sky-600 hover:bg-sky-500 text-white rounded-xl p-6 flex items-center gap-4 transition-colors">
+              <Brain className="w-8 h-8" />
+              <div>
+                <div className="font-semibold text-lg">วิเคราะห์ใหม่</div>
+                <div className="text-sky-200 text-sm">ป้อน symbol เพื่อให้ AI วิเคราะห์</div>
+              </div>
+            </Link>
+            <Link href="/accuracy" className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl p-6 flex items-center gap-4 transition-colors">
+              <BarChart3 className="w-8 h-8 text-sky-400" />
+              <div>
+                <div className="font-semibold text-lg">ดูความแม่นยำ</div>
+                <div className="text-slate-400 text-sm">วิเคราะห์ประสิทธิภาพ AI</div>
+              </div>
+            </Link>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

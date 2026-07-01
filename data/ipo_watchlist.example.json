@@ -1,0 +1,12 @@
+[
+  {
+    "company": "Example Robotics Holding",
+    "symbol": "EXRB",
+    "exchange": "HKEX",
+    "expected_date": "2026-07-09",
+    "status": "prospectus_review",
+    "summary": "Replace this sample with a real IPO from the prospectus or exchange filing.",
+    "link": "https://example.com/prospectus.pdf",
+    "source": "manual_watchlist"
+  }
+]

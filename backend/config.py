@@ -1,0 +1,52 @@
+﻿from pydantic_settings import BaseSettings
+from functools import lru_cache
+
+
+class Settings(BaseSettings):
+    anthropic_api_key: str = ""
+    database_url: str = "sqlite:///./agent_invest.db"
+    news_api_key: str = ""
+    frontend_url: str = "http://localhost:3000"
+    fetch_interval_minutes: int = 30
+    claude_model: str = "claude-sonnet-4-6"
+    telegram_bot_token: str = ""
+    telegram_channel_id: str = ""
+    telegram_community_chat_id: str = ""
+    telegram_paid_chat_id: str = ""
+    telegram_webhook_secret_token: str = ""
+    telegram_admin_token: str = ""
+    telegram_daily_report_enabled: bool = False
+    telegram_community_report_enabled: bool = False
+    telegram_paid_report_enabled: bool = False
+    telegram_daily_report_hour: int = 8
+    telegram_daily_report_minute: int = 30
+    telegram_timezone: str = "Asia/Bangkok"
+    telegram_use_ai_summary: bool = True
+    telegram_bot_username: str = ""
+    telegram_public_news_limit: int = 3
+    telegram_public_watchlist_limit: int = 3
+    telegram_private_report_max_assets: int = 8
+    telegram_private_report_max_news_items: int = 20
+
+    monitor_watchlist_symbols: str = "AAPL,MSFT,NVDA,TSLA,SPY,QQQ,BTC-USD,ETH-USD"
+    monitor_economic_indicators: str = (
+        "FOMC,CPI,PCE,NFP,GDP,PMI,Initial Jobless Claims,"
+        "Unemployment Rate,Retail Sales,Core Inflation,ECB,BoJ,OPEC"
+    )
+    monitor_rss_sources: str = (
+        "https://feeds.finance.yahoo.com/rss/2.0/headline,"
+        "https://www.investing.com/rss/news.rss,"
+        "https://cointelegraph.com/rss,"
+        "https://coindesk.com/arc/outboundfeeds/rss/"
+    )
+    monitor_ipo_watchlist_path: str = ""
+    monitor_report_max_news_items: int = 30
+    monitor_report_max_watchlist_assets: int = 20
+
+    class Config:
+        env_file = ".env"
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
