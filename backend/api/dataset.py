@@ -67,6 +67,41 @@ def export_dataset(
     predictions = q.limit(limit).all()
 
     if format == "jsonl":
+        # join closest MarketSnapshot for technical indicators
+        from models.prediction import MarketSnapshot
+        from sqlalchemy import func
+
+        snapshot_map: dict[str, dict] = {}
+        if predictions:
+            pred_ids_by_symbol: dict[str, list] = {}
+            for p in predictions:
+                pred_ids_by_symbol.setdefault(p.symbol, []).append(p)
+
+            for sym, sym_preds in pred_ids_by_symbol.items():
+                snaps = (
+                    db.query(MarketSnapshot)
+                    .filter(MarketSnapshot.symbol == sym)
+                    .order_by(MarketSnapshot.fetched_at)
+                    .all()
+                )
+                for p in sym_preds:
+                    closest = min(
+                        snaps,
+                        key=lambda s: abs((s.fetched_at - p.created_at.replace(tzinfo=None)).total_seconds()),
+                        default=None,
+                    ) if snaps else None
+                    snapshot_map[p.id] = {
+                        "price": p.current_price,
+                        "rsi_14": closest.rsi_14 if closest else None,
+                        "macd": closest.macd if closest else None,
+                        "macd_signal": closest.macd_signal if closest else None,
+                        "sma_20": closest.sma_20 if closest else None,
+                        "sma_50": closest.sma_50 if closest else None,
+                        "pe_ratio": closest.pe_ratio if closest else None,
+                        "volume": closest.volume if closest else None,
+                        "market_cap": closest.market_cap if closest else None,
+                    }
+
         lines = []
         for p in predictions:
             record = {
@@ -74,9 +109,7 @@ def export_dataset(
                 "symbol": p.symbol,
                 "timeframe": p.timeframe,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
-                "market_snapshot": {
-                    "price": p.current_price,
-                },
+                "market_snapshot": snapshot_map.get(p.id, {"price": p.current_price}),
                 "agent_outputs": p.agent_outputs or {},
                 "prediction": {
                     "direction": p.direction,

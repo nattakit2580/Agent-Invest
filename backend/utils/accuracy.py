@@ -74,7 +74,9 @@ def calc_price_score_component(
 
 
 def confidence_bucket(confidence: float) -> str:
-    lower = round(int(confidence * 10) / 10, 1)
+    # clamp so confidence=1.0 falls in "0.9-1.0" not the non-existent "1.0-1.1"
+    clamped = min(confidence, 0.9999)
+    lower = round(int(clamped * 10) / 10, 1)
     upper = round(lower + 0.1, 1)
     return f"{lower:.1f}-{upper:.1f}"
 

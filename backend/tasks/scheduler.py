@@ -80,6 +80,18 @@ def auto_analyze_watchlist():
     try:
         for symbol in symbols:
             try:
+                # skip if a pending prediction already exists for this symbol + timeframe
+                # created within the last interval to avoid duplicates
+                recent_cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.auto_analyze_interval_hours)
+                already_exists = db.query(Prediction).filter(
+                    Prediction.symbol == symbol,
+                    Prediction.timeframe == settings.auto_analyze_timeframe,
+                    Prediction.status == "pending",
+                    Prediction.created_at >= recent_cutoff,
+                ).first()
+                if already_exists:
+                    continue
+
                 market_data = fetch_market_data(symbol)
                 news = fetch_all_news(symbol)
                 similar_cases = rag_service.get_similar_cases(symbol, market_data, None, db)

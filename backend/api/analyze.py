@@ -21,6 +21,9 @@ def analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
 
     news = fetch_all_news(req.symbol.upper())
 
+    # RAG retrieval uses market_data only (agents haven't run yet).
+    # We pass agent_outputs=None intentionally — market context alone is sufficient
+    # for finding structurally similar past cases before agents produce their output.
     similar_cases = rag_service.get_similar_cases(
         req.symbol.upper(), market_data, None, db
     )

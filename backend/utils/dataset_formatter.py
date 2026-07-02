@@ -30,11 +30,17 @@ def build_user_prompt(case: dict) -> str:
 def build_assistant_response(case: dict) -> str:
     outcome = case.get("outcome", {})
     prediction = case.get("prediction", {})
+    # pull key_risks from agent_outputs if available
+    key_risks: list[str] = []
+    for agent_data in case.get("agent_outputs", {}).values():
+        key_risks.extend(agent_data.get("key_risks", []))
+    key_risks = list(dict.fromkeys(key_risks))[:3]  # dedup, keep top 3
+
     response = {
         "direction": outcome.get("actual_direction", prediction.get("direction")),
         "confidence": round(prediction.get("confidence", 0.5), 3),
         "reasoning": prediction.get("reasoning", ""),
-        "key_risks": [],
+        "key_risks": key_risks,
         "recommendation": f"Based on analysis, the {case['symbol']} outlook for {case['timeframe']} is {outcome.get('actual_direction', 'neutral')}.",
     }
     return json.dumps(response, ensure_ascii=False)

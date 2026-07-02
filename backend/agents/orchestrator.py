@@ -1,5 +1,3 @@
-import asyncio
-import json
 from concurrent.futures import ThreadPoolExecutor
 from agents.news_agent import NewsAgent
 from agents.fundamental_agent import FundamentalAgent
