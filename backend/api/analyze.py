@@ -6,6 +6,7 @@ from models.schemas import AnalyzeRequest, PredictionResponse
 from fetchers.market_fetcher import fetch_market_data
 from fetchers.news_fetcher import fetch_all_news
 from agents.orchestrator import Orchestrator
+from services import rag as rag_service
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 orchestrator = Orchestrator()
@@ -19,7 +20,12 @@ def analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"Failed to fetch market data: {str(e)}")
 
     news = fetch_all_news(req.symbol.upper())
-    result = orchestrator.analyze(req.symbol.upper(), market_data, news, req.timeframe)
+
+    similar_cases = rag_service.get_similar_cases(
+        req.symbol.upper(), market_data, None, db
+    )
+
+    result = orchestrator.analyze(req.symbol.upper(), market_data, news, req.timeframe, similar_cases)
 
     snapshot = MarketSnapshot(
         symbol=req.symbol.upper(),
@@ -50,6 +56,9 @@ def analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
     db.add(prediction)
     db.commit()
     db.refresh(prediction)
+
+    rag_service.index_prediction(prediction, market_data, db)
+
     return prediction
 
 

@@ -5,7 +5,7 @@ from agents.news_agent import NewsAgent
 from agents.fundamental_agent import FundamentalAgent
 from agents.technical_agent import TechnicalAgent
 from agents.sentiment_agent import SentimentAgent
-from agents.base_agent import BaseAgent, client, settings
+from agents.base_agent import BaseAgent, settings
 
 
 DIRECTION_WEIGHTS = {
@@ -72,7 +72,7 @@ class Orchestrator:
 
         return direction, round(min(max(final_confidence, 0.0), 1.0), 3)
 
-    def synthesize(self, symbol: str, market_data: dict, agent_outputs: dict, timeframe: str) -> dict:
+    def synthesize(self, symbol: str, market_data: dict, agent_outputs: dict, timeframe: str, similar_cases: list[dict] | None = None) -> dict:
         direction, confidence = self._weighted_direction(agent_outputs)
 
         current_price = market_data.get("price", 0)
@@ -94,6 +94,12 @@ class Orchestrator:
             "You are a senior investment analyst synthesizing multiple analysis reports. "
             "Return ONLY valid JSON. No markdown."
         )
+
+        similar_section = ""
+        if similar_cases:
+            from services.rag import format_cases_for_prompt
+            similar_section = "\n\n" + format_cases_for_prompt(similar_cases)
+
         user = f"""Synthesize these analysis reports for {symbol} ({timeframe} outlook):
 
 {summaries}
@@ -101,7 +107,7 @@ class Orchestrator:
 KEY POINTS FROM ALL AGENTS:
 {chr(10).join(f'- {p}' for p in all_key_points)}
 
-MARKET DATA: Price={current_price}, Change={market_data.get('price_change_pct')}%
+MARKET DATA: Price={current_price}, Change={market_data.get('price_change_pct')}%{similar_section}
 
 Return this exact JSON:
 {{
@@ -134,6 +140,6 @@ Return this exact JSON:
             "agent_outputs": agent_outputs,
         }
 
-    def analyze(self, symbol: str, market_data: dict, news: list[dict], timeframe: str = "1w") -> dict:
+    def analyze(self, symbol: str, market_data: dict, news: list[dict], timeframe: str = "1w", similar_cases: list[dict] | None = None) -> dict:
         agent_outputs = self.run_all_agents(symbol, market_data, news)
-        return self.synthesize(symbol, market_data, agent_outputs, timeframe)
+        return self.synthesize(symbol, market_data, agent_outputs, timeframe, similar_cases)

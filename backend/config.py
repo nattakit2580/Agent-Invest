@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     monitor_report_max_news_items: int = 30
     monitor_report_max_watchlist_assets: int = 20
 
+    # RAG settings
+    rag_enabled: bool = True
+    rag_top_k: int = 5
+    rag_min_score: float = 0.0          # minimum accuracy_score for retrieved cases
+    openrouter_embedding_model: str = "openai/text-embedding-3-small"
+
     class Config:
         env_file = ".env"
 

@@ -35,4 +35,5 @@ def init_db():
         TelegramUser,
     )
     from models.evaluation import EvaluationResult  # noqa
+    from models.embedding import PredictionEmbedding  # noqa
     Base.metadata.create_all(bind=engine)
