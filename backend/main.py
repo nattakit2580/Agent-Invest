@@ -8,6 +8,7 @@ from api.accuracy import router as accuracy_router
 from api.export import router as export_router
 from api.telegram import router as telegram_router
 from api.rag import router as rag_router
+from api.dataset import router as dataset_router
 from tasks.scheduler import create_scheduler
 from config import get_settings
 
@@ -44,6 +45,7 @@ app.include_router(accuracy_router)
 app.include_router(export_router)
 app.include_router(telegram_router)
 app.include_router(rag_router)
+app.include_router(dataset_router)
 
 
 @app.get("/")

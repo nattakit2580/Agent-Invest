@@ -47,8 +47,14 @@ class Settings(BaseSettings):
     # RAG settings
     rag_enabled: bool = True
     rag_top_k: int = 5
-    rag_min_score: float = 0.0          # minimum accuracy_score for retrieved cases
+    rag_min_score: float = 0.0
     openrouter_embedding_model: str = "openai/text-embedding-3-small"
+
+    # Dataset collection (Phase 4)
+    auto_analyze_enabled: bool = False
+    auto_analyze_symbols: str = "AAPL,MSFT,NVDA,TSLA,SPY,QQQ,BTC-USD,ETH-USD"
+    auto_analyze_timeframe: str = "1w"
+    auto_analyze_interval_hours: int = 24
 
     class Config:
         env_file = ".env"
