@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     auto_analyze_timeframe: str = "1w"
     auto_analyze_interval_hours: int = 24
 
+    # Local fine-tuned model (Phase 5)
+    use_local_model: bool = False
+    local_model_url: str = "http://localhost:11434/v1"   # ollama or vllm
+    local_model_name: str = "agent-invest-7b"
+
     class Config:
         env_file = ".env"
 

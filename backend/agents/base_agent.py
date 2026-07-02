@@ -9,26 +9,36 @@ class BaseAgent:
     name: str = "base"
 
     def _call_llm(self, system: str, user: str, max_tokens: int = 1024) -> str:
-        payload = {
-            "model": settings.openrouter_model,
-            "max_tokens": max_tokens,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        }
-        headers = {
-            "Authorization": f"Bearer {settings.openrouter_api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": settings.frontend_url,
-            "X-Title": "Agent-Invest",
-        }
-        response = httpx.post(
-            f"{settings.openrouter_base_url}/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=60,
-        )
+        if settings.use_local_model:
+            # Phase 5: route to local fine-tuned model (ollama/vllm, OpenAI-compatible)
+            url = f"{settings.local_model_url.rstrip('/')}/chat/completions"
+            payload = {
+                "model": settings.local_model_name,
+                "max_tokens": max_tokens,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            }
+            headers = {"Content-Type": "application/json"}
+        else:
+            url = f"{settings.openrouter_base_url}/chat/completions"
+            payload = {
+                "model": settings.openrouter_model,
+                "max_tokens": max_tokens,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            }
+            headers = {
+                "Authorization": f"Bearer {settings.openrouter_api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": settings.frontend_url,
+                "X-Title": "Agent-Invest",
+            }
+
+        response = httpx.post(url, json=payload, headers=headers, timeout=60)
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
 
