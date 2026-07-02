@@ -42,8 +42,39 @@ class AccuracyStats(BaseModel):
     direction_accuracy: float
     avg_confidence: float
     avg_accuracy_score: float
+    avg_brier_score: Optional[float] = None
     by_timeframe: dict[str, dict]
     by_symbol: dict[str, dict]
+
+
+class EvaluationResultResponse(BaseModel):
+    id: str
+    prediction_id: str
+    evaluated_at: datetime
+    direction_correct: bool
+    agent_directions: Optional[dict[str, bool]]
+    price_error_pct: Optional[float]
+    price_score: Optional[float]
+    brier_score: float
+    confidence_bucket: str
+    total_score: float
+
+    class Config:
+        from_attributes = True
+
+
+class AgentAccuracyItem(BaseModel):
+    agent: str
+    total: int
+    hits: int
+    direction_accuracy: float
+
+
+class CalibrationBucket(BaseModel):
+    bucket: str
+    total: int
+    hits: int
+    actual_rate: float
 
 
 class CompareRequest(BaseModel):

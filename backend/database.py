@@ -34,4 +34,5 @@ def init_db():
         TelegramMessage,
         TelegramUser,
     )
+    from models.evaluation import EvaluationResult  # noqa
     Base.metadata.create_all(bind=engine)
