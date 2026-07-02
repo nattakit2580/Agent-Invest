@@ -112,7 +112,7 @@ Return this exact JSON:
 }}"""
 
         try:
-            synth = BaseAgent()._parse_json(BaseAgent()._call_claude(system, user, max_tokens=800))
+            synth = BaseAgent()._parse_json(BaseAgent()._call_llm(system, user, max_tokens=800))
         except Exception:
             synth = {
                 "reasoning": f"Based on multi-agent analysis, {symbol} shows {direction} signals with {confidence:.0%} confidence for the {timeframe} timeframe.",

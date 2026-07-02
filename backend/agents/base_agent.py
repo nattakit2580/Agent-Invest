@@ -1,22 +1,36 @@
 import json
-import anthropic
+import httpx
 from config import get_settings
 
 settings = get_settings()
-client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
 
 class BaseAgent:
     name: str = "base"
 
-    def _call_claude(self, system: str, user: str, max_tokens: int = 1024) -> str:
-        message = client.messages.create(
-            model=settings.claude_model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
+    def _call_llm(self, system: str, user: str, max_tokens: int = 1024) -> str:
+        payload = {
+            "model": settings.openrouter_model,
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {settings.openrouter_api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": settings.frontend_url,
+            "X-Title": "Agent-Invest",
+        }
+        response = httpx.post(
+            f"{settings.openrouter_base_url}/chat/completions",
+            json=payload,
+            headers=headers,
+            timeout=60,
         )
-        return message.content[0].text
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
 
     def _parse_json(self, text: str) -> dict:
         start = text.find("{")

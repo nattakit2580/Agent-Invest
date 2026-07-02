@@ -272,7 +272,7 @@ Return this exact JSON:
 
     try:
         agent = BaseAgent()
-        result = agent._parse_json(agent._call_claude(system, user, max_tokens=800))
+        result = agent._parse_json(agent._call_llm(system, user, max_tokens=800))
         return {
             "headline": str(result.get("headline", "")).strip() or "Daily monitor generated.",
             "daily_focus": list(result.get("daily_focus") or [])[:4],

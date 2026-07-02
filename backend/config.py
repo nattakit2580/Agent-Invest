@@ -3,12 +3,13 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    anthropic_api_key: str = ""
-    database_url: str = "sqlite:///./agent_invest.db"
+    openrouter_api_key: str = ""
+    openrouter_model: str = "anthropic/claude-sonnet-4-6"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    database_url: str = "postgresql://agent:secret@localhost:5432/agent_invest"
     news_api_key: str = ""
     frontend_url: str = "http://localhost:3000"
     fetch_interval_minutes: int = 30
-    claude_model: str = "claude-sonnet-4-6"
     telegram_bot_token: str = ""
     telegram_channel_id: str = ""
     telegram_community_chat_id: str = ""
