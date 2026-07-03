@@ -5,7 +5,8 @@ from collections import defaultdict
 from database import get_db
 from models.prediction import Prediction
 from models.evaluation import EvaluationResult
-from models.schemas import AccuracyStats, EvaluationResultResponse, AgentAccuracyItem, CalibrationBucket
+from models.schemas import AccuracyStats, EvaluationResultResponse, AgentAccuracyItem, CalibrationBucket, DynamicWeightsResponse
+from services.agent_feedback import get_agent_feedback, MIN_EVALS_FOR_DYNAMIC
 
 router = APIRouter(prefix="/accuracy", tags=["accuracy"])
 
@@ -144,6 +145,19 @@ def get_calibration(db: Session = Depends(get_db)):
             actual_rate=round(v["hits"] / n, 4) if n else 0.0,
         ))
     return result
+
+
+@router.get("/weights", response_model=DynamicWeightsResponse)
+def get_dynamic_weights(db: Session = Depends(get_db)):
+    """Current dynamic agent weights derived from track record."""
+    fb = get_agent_feedback(db)
+    return DynamicWeightsResponse(
+        total_evals=fb["total_evals"],
+        dynamic_weights_active=fb["total_evals"] >= MIN_EVALS_FOR_DYNAMIC,
+        weights=fb["weights"],
+        accuracies=fb["accuracies"],
+        prompt_section=fb["prompt_section"],
+    )
 
 
 @router.get("/{prediction_id}", response_model=EvaluationResultResponse)

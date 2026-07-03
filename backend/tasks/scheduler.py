@@ -74,10 +74,12 @@ def auto_analyze_watchlist():
 
     from agents.orchestrator import Orchestrator
     from services import rag as rag_service
+    from services.agent_feedback import get_agent_feedback
     orchestrator = Orchestrator()
 
     db: Session = SessionLocal()
     try:
+        agent_fb = get_agent_feedback(db)
         for symbol in symbols:
             try:
                 # skip if a pending prediction already exists for this symbol + timeframe
@@ -95,7 +97,7 @@ def auto_analyze_watchlist():
                 market_data = fetch_market_data(symbol)
                 news = fetch_all_news(symbol)
                 similar_cases = rag_service.get_similar_cases(symbol, market_data, None, db)
-                result = orchestrator.analyze(symbol, market_data, news, settings.auto_analyze_timeframe, similar_cases)
+                result = orchestrator.analyze(symbol, market_data, news, settings.auto_analyze_timeframe, similar_cases, agent_fb)
 
                 prediction = Prediction(
                     symbol=symbol,

@@ -77,6 +77,14 @@ class CalibrationBucket(BaseModel):
     actual_rate: float
 
 
+class DynamicWeightsResponse(BaseModel):
+    total_evals: int
+    dynamic_weights_active: bool
+    weights: dict[str, float]
+    accuracies: dict[str, float]
+    prompt_section: str
+
+
 class CompareRequest(BaseModel):
     prediction_id: str
     actual_price: float

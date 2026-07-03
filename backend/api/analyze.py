@@ -7,6 +7,7 @@ from fetchers.market_fetcher import fetch_market_data
 from fetchers.news_fetcher import fetch_all_news
 from agents.orchestrator import Orchestrator
 from services import rag as rag_service
+from services.agent_feedback import get_agent_feedback
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 orchestrator = Orchestrator()
@@ -28,7 +29,8 @@ def analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
         req.symbol.upper(), market_data, None, db
     )
 
-    result = orchestrator.analyze(req.symbol.upper(), market_data, news, req.timeframe, similar_cases)
+    agent_fb = get_agent_feedback(db)
+    result = orchestrator.analyze(req.symbol.upper(), market_data, news, req.timeframe, similar_cases, agent_fb)
 
     snapshot = MarketSnapshot(
         symbol=req.symbol.upper(),
