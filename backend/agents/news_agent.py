@@ -20,7 +20,9 @@ class NewsAgent(BaseAgent):
 
         system = (
             "You are a financial news analyst. Analyze news articles and return ONLY valid JSON. "
-            "No markdown, no explanation outside JSON."
+            "No markdown, no explanation outside JSON. "
+            "Write all text fields (summary, key_points, major_events) in Thai language. "
+            "Keep JSON keys, direction values (bullish/bearish/neutral), and numbers in English."
         )
         user = f"""Analyze these recent news articles about {symbol} and their potential market impact.
 

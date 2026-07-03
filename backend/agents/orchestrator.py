@@ -100,7 +100,9 @@ class Orchestrator:
 
         system = (
             "You are a senior investment analyst synthesizing multiple analysis reports. "
-            "Return ONLY valid JSON. No markdown."
+            "Return ONLY valid JSON. No markdown. "
+            "Write all text fields (reasoning, key_risks, catalysts, recommendation) in Thai language. "
+            "Keep JSON keys, direction values (bullish/bearish/neutral), and numbers in English."
         )
 
         # inject similar historical cases
@@ -132,13 +134,13 @@ Return this exact JSON:
 }}"""
 
         try:
-            synth = BaseAgent()._parse_json(BaseAgent()._call_llm(system, user, max_tokens=800))
+            synth = BaseAgent()._parse_json(BaseAgent()._call_llm(system, user, max_tokens=1500))
         except Exception:
             synth = {
-                "reasoning": f"Based on multi-agent analysis, {symbol} shows {direction} signals with {confidence:.0%} confidence for the {timeframe} timeframe.",
-                "key_risks": ["Market volatility", "Macro uncertainty"],
+                "reasoning": f"จากการวิเคราะห์หลายมิติ {symbol} แสดงสัญญาณ{direction} ด้วยความเชื่อมั่น {confidence:.0%} สำหรับกรอบเวลา {timeframe}",
+                "key_risks": ["ความผันผวนของตลาด", "ความไม่แน่นอนเชิงมหภาค"],
                 "catalysts": [],
-                "recommendation": f"Monitor {symbol} closely.",
+                "recommendation": f"ติดตาม {symbol} อย่างใกล้ชิด",
             }
 
         # critic pass — challenge the synthesis

@@ -7,7 +7,9 @@ class SentimentAgent(BaseAgent):
     def analyze(self, symbol: str, market_data: dict, news: list[dict]) -> dict:
         system = (
             "You are a market sentiment analyst. Analyze overall market mood and return ONLY valid JSON. "
-            "No markdown, no explanation outside JSON."
+            "No markdown, no explanation outside JSON. "
+            "Write all text fields (summary, key_points) in Thai language. "
+            "Keep JSON keys, direction/mood/momentum/crowd_sentiment enum values, and numbers in English."
         )
 
         price = market_data.get("price", 0)
