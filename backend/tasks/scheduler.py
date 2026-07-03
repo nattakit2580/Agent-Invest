@@ -4,12 +4,12 @@ from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models.prediction import MonitorReport, Prediction
+from models.prediction import Prediction
 from models.evaluation import EvaluationResult
 from fetchers.market_fetcher import fetch_actual_price, fetch_market_data
 from fetchers.news_fetcher import fetch_all_news
 from services.monitor_report import build_daily_monitor_report, render_public_monitor_message
-from services.telegram_client import TelegramClient, TelegramSendError, broadcast_parallel
+from services.telegram_client import broadcast_parallel
 from utils.accuracy import calc_direction_from_prices, calc_accuracy_score, build_evaluation
 from config import get_settings
 
@@ -130,95 +130,22 @@ def _telegram_reporting_enabled() -> bool:
     ])
 
 
-def _send_report_to_chat(
-    db: Session,
-    client: TelegramClient,
-    report: dict,
-    *,
-    chat_id: str,
-    report_type: str,
-    message: str,
-) -> None:
-    row = MonitorReport(
-        report_date=report["report_date"],
-        report_type=report_type,
-        channel_id=chat_id,
-        title=report["title"],
-        categories=report["categories"],
-        watchlist=report["watchlist"],
-        ipo_agenda=report["ipo_agenda"],
-        message=message,
-        status="pending",
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-
-    try:
-        client.send_message(message, chat_id=chat_id)
-        row.status = "sent"
-        row.sent_at = datetime.now(timezone.utc)
-        row.error = None
-    except TelegramSendError as e:
-        row.status = "failed"
-        row.error = str(e)
-        print(f"[Scheduler] {report_type} send error: {e}")
-    except Exception as e:
-        row.status = "failed"
-        row.error = str(e)
-        print(f"[Scheduler] {report_type} error: {e}")
-    finally:
-        db.commit()
-
-
 def send_daily_telegram_monitor():
     if not _telegram_reporting_enabled():
         return
-
-    client = TelegramClient()
-    if not client.bot_configured:
+    if not settings.telegram_bot_token:
         print("[Scheduler] telegram monitor skipped: TELEGRAM_BOT_TOKEN is not configured")
         return
 
-    # bot1 targets (with report_type metadata for DB logging)
-    targets: list[tuple[str, str, bool]] = []
-    if settings.telegram_daily_report_enabled and settings.telegram_channel_id:
-        targets.append((settings.telegram_channel_id, "daily_monitor", False))
-    if settings.telegram_community_report_enabled and settings.telegram_community_chat_id:
-        targets.append((settings.telegram_community_chat_id, "community_monitor", True))
-    if settings.telegram_paid_report_enabled and settings.telegram_paid_chat_id:
-        targets.append((settings.telegram_paid_chat_id, "paid_monitor", False))
-
-    if not targets:
-        print("[Scheduler] telegram monitor skipped: no target chat ids configured")
-        return
-
-    db: Session = SessionLocal()
     try:
         report = build_daily_monitor_report()
-
-        # bot1: send to all configured targets (logs to DB)
-        for chat_id, report_type, public_preview in targets:
-            message = render_public_monitor_message(report) if public_preview else report["message"]
-            _send_report_to_chat(
-                db, client, report,
-                chat_id=chat_id, report_type=report_type, message=message,
-            )
-
-        # bot2: ส่งขนานกับ bot1 ถ้า configure ไว้
-        if settings.telegram_bot2_token and settings.telegram_bot2_channel_id:
-            main_message = report["message"]
-            results = broadcast_parallel(
-                main_message,
-                extra_targets=[(settings.telegram_bot2_token, settings.telegram_bot2_channel_id)],
-            )
-            for label, status in results.items():
-                print(f"[Scheduler] parallel send {label}: {status}")
-
+        message = report["message"]
+        results = broadcast_parallel(message)
+        for label, status in results.items():
+            icon = "✓" if status == "ok" else "✗"
+            print(f"[Scheduler] {icon} {label}: {status}")
     except Exception as e:
         print(f"[Scheduler] telegram monitor error: {e}")
-    finally:
-        db.close()
 
 
 def create_scheduler() -> BackgroundScheduler:
