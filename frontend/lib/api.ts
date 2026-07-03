@@ -116,17 +116,29 @@ export interface CalendarResponse {
   events: CalendarEvent[];
 }
 
-export interface LearningInsights {
-  symbol: string | null;
-  compared_samples: number;
-  learning_active: boolean;
-  agent_accuracy: Record<string, number>;
-  agent_samples: Record<string, number>;
-  best_agent: string | null;
-  worst_agent: string | null;
-  base_weights: Record<string, number>;
-  learned_weights: Record<string, number>;
+export interface AgentAccuracyItem {
+  agent: string;
+  total: number;
+  hits: number;
+  direction_accuracy: number;
 }
+
+export interface DynamicWeights {
+  total_evals: number;
+  dynamic_weights_active: boolean;
+  weights: Record<string, number>;
+  accuracies: Record<string, number>;
+  prompt_section: string;
+}
+
+// Static base weights the system starts from (before it has enough evaluations).
+export const BASE_WEIGHTS: Record<string, number> = {
+  news: 0.2,
+  fundamental: 0.3,
+  technical: 0.3,
+  sentiment: 0.2,
+};
+export const MIN_EVALS_FOR_DYNAMIC = 20;
 
 export const analyzeSymbol = (symbol: string, timeframe: string) =>
   api.post<Prediction>("/analyze", { symbol, timeframe }).then((r) => r.data);
@@ -160,7 +172,8 @@ export const getCalendarEvents = (daysAhead = 14) =>
 export const refreshCalendar = () =>
   api.post<{ touched: number; events: CalendarEvent[] }>("/calendar/refresh").then((r) => r.data);
 
-export const getLearningInsights = (symbol?: string) =>
-  api
-    .get<LearningInsights>("/accuracy/insights", { params: symbol ? { symbol } : undefined })
-    .then((r) => r.data);
+export const getAgentAccuracyList = () =>
+  api.get<AgentAccuracyItem[]>("/accuracy/agents").then((r) => r.data);
+
+export const getDynamicWeights = () =>
+  api.get<DynamicWeights>("/accuracy/weights").then((r) => r.data);

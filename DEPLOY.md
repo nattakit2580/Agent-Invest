@@ -2,10 +2,10 @@
 
 Architecture: **Frontend → Cloudflare Workers** (Next.js via OpenNext) · **Backend → Render** (FastAPI in Docker).
 
-The backend can't run on Workers (yfinance / SQLAlchemy / APScheduler / SQLite need a real Python host), so it lives on Render and the Cloudflare frontend calls it directly over HTTPS (CORS is already configured).
+The backend can't run on Workers (yfinance / SQLAlchemy / APScheduler / PostgreSQL+pgvector need a real Python host), so it lives on Render and the Cloudflare frontend calls it directly over HTTPS (CORS is already configured).
 
 ```
-Browser ──► Cloudflare Workers (frontend) ──► Render (FastAPI backend) ──► yfinance / FRED / Anthropic
+Browser ──► Cloudflare Workers (frontend) ──► Render (FastAPI + Postgres/pgvector) ──► yfinance / FRED / OpenRouter
 ```
 
 Deploy the **backend first** — you need its URL to configure the frontend.
@@ -15,7 +15,8 @@ Deploy the **backend first** — you need its URL to configure the frontend.
 ## 0. Prerequisites
 - Code pushed to a GitHub repo.
 - Accounts: [Render](https://render.com) (free) and [Cloudflare](https://dash.cloudflare.com) (free).
-- `ANTHROPIC_API_KEY` (required). Optional: `FRED_API_KEY`, `NEWS_API_KEY`, Telegram tokens.
+- `OPENROUTER_API_KEY` (required — the LLM provider; get one at [openrouter.ai](https://openrouter.ai/keys)). Optional: `FRED_API_KEY`, `NEWS_API_KEY`, Telegram tokens.
+- The blueprint provisions a **managed PostgreSQL** (with the `pgvector` extension, created automatically on first boot) for predictions + RAG embeddings.
 
 ---
 
@@ -24,8 +25,8 @@ Deploy the **backend first** — you need its URL to configure the frontend.
 Blueprint file: [`render.yaml`](./render.yaml) (already in the repo).
 
 1. Render Dashboard → **New → Blueprint** → select your GitHub repo → Render reads `render.yaml`.
-2. When prompted, fill the secret env vars (marked `sync:false`):
-   - `ANTHROPIC_API_KEY` = `sk-ant-...`
+2. Render creates the Postgres DB + backend and wires `DATABASE_URL` automatically. Fill the secret env vars (marked `sync:false`):
+   - `OPENROUTER_API_KEY` = `sk-or-...`
    - `FRONTEND_URL` = leave blank for now (set it in step 3 after you know the Workers URL) — CORS also allows `*.workers.dev` via regex, so it works either way.
    - `FRED_API_KEY` = optional (enables the Economic page)
 3. **Create** → wait for the build. Health check: `GET /health`.
@@ -34,7 +35,7 @@ Blueprint file: [`render.yaml`](./render.yaml) (already in the repo).
    https://agent-invest-backend.onrender.com/health   → {"status":"healthy"}
    ```
 
-> **Free plan notes:** the service sleeps after ~15 min idle (first request then takes ~50s to wake). The SQLite DB is **ephemeral** — it resets on each redeploy. For persistent history, add a Render Disk (paid) or switch `DATABASE_URL` to a Render Postgres instance.
+> **Free plan notes:** the service sleeps after ~15 min idle (first request then takes ~50s to wake). The free Postgres database **expires after 90 days** — upgrade to a paid instance to keep data long-term. Predictions, evaluations, and RAG embeddings persist in Postgres across redeploys.
 
 Alternative host (same Dockerfile): **Railway** — New Project → Deploy from repo → set root to `backend/` → add the same env vars.
 

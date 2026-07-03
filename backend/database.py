@@ -6,7 +6,9 @@ settings = get_settings()
 
 engine = create_engine(
     settings.database_url,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {},
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -34,4 +36,13 @@ def init_db():
         TelegramMessage,
         TelegramUser,
     )
+    from models.evaluation import EvaluationResult  # noqa
+    from models.embedding import PredictionEmbedding  # noqa
+
+    # The embedding table has a pgvector column, so the extension must exist first.
+    if engine.url.get_backend_name().startswith("postgresql"):
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
     Base.metadata.create_all(bind=engine)

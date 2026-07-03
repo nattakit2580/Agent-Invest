@@ -53,7 +53,7 @@ Return this exact JSON structure:
 }}"""
 
         try:
-            result = self._parse_json(self._call_claude(system, user))
+            result = self._parse_json(self._call_llm(system, user))
             result.setdefault("direction", "neutral")
             result.setdefault("confidence", 0.5)
             result.setdefault("summary", "")

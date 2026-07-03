@@ -11,7 +11,14 @@ import {
   Legend,
 } from "recharts";
 import { Sparkles, Brain, Trophy, AlertTriangle, Scale, Info } from "lucide-react";
-import { getLearningInsights, type LearningInsights } from "@/lib/api";
+import {
+  getAgentAccuracyList,
+  getDynamicWeights,
+  BASE_WEIGHTS,
+  MIN_EVALS_FOR_DYNAMIC,
+  type AgentAccuracyItem,
+  type DynamicWeights,
+} from "@/lib/api";
 
 const AGENT_LABELS: Record<string, string> = {
   news: "News",
@@ -25,69 +32,73 @@ function accuracyColor(pct: number) {
 }
 
 export default function InsightsPage() {
-  const [data, setData] = useState<LearningInsights | null>(null);
+  const [agents, setAgents] = useState<AgentAccuracyItem[]>([]);
+  const [weights, setWeights] = useState<DynamicWeights | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getLearningInsights().then(setData).finally(() => setLoading(false));
+    Promise.all([getAgentAccuracyList(), getDynamicWeights()])
+      .then(([a, w]) => {
+        setAgents(a);
+        setWeights(w);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="text-slate-400 p-8">กำลังโหลด...</div>;
-  if (!data) return <div className="text-red-400 p-8">ไม่สามารถโหลดข้อมูลได้</div>;
+  if (!weights) return <div className="text-red-400 p-8">ไม่สามารถโหลดข้อมูลได้</div>;
 
-  const agentNames = Object.keys(data.base_weights);
+  const active = weights.dynamic_weights_active;
+  const totalEvals = weights.total_evals;
 
-  const accData = Object.entries(data.agent_accuracy).map(([name, acc]) => ({
-    name: AGENT_LABELS[name] ?? name,
-    key: name,
-    accuracy: Math.round(acc * 100),
-    samples: data.agent_samples[name] ?? 0,
+  const accData = agents.map((a) => ({
+    name: AGENT_LABELS[a.agent] ?? a.agent,
+    accuracy: Math.round(a.direction_accuracy * 100),
+    samples: a.total,
   }));
 
+  const bestAgent = agents.length ? agents.reduce((b, a) => (a.direction_accuracy > b.direction_accuracy ? a : b)) : null;
+  const worstAgent = agents.length ? agents.reduce((b, a) => (a.direction_accuracy < b.direction_accuracy ? a : b)) : null;
+
+  const agentNames = Object.keys(BASE_WEIGHTS);
   const weightData = agentNames.map((name) => ({
     name: AGENT_LABELS[name] ?? name,
-    base: Math.round((data.base_weights[name] ?? 0) * 100),
-    learned: Math.round((data.learned_weights[name] ?? 0) * 100),
+    base: Math.round((BASE_WEIGHTS[name] ?? 0) * 100),
+    learned: Math.round((weights.weights[name] ?? BASE_WEIGHTS[name] ?? 0) * 100),
   }));
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-          <Sparkles className="w-8 h-8 text-sky-400" />
+        <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
+          <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-sky-400" />
           ระบบเรียนรู้
         </h1>
         <p className="text-slate-400 mt-1">
-          ระบบเทียบผลคาดการณ์กับผลจริง แล้วปรับน้ำหนักการโหวตของแต่ละ Agent ให้แม่นยำขึ้น
+          ระบบประเมินผลจริง (RAG + critic + Brier score) แล้วปรับน้ำหนักการโหวตของแต่ละ Agent ให้แม่นยำขึ้น
         </p>
       </div>
 
       {/* status banner */}
       <div
         className={`rounded-xl p-5 flex items-start gap-3 border ${
-          data.learning_active
-            ? "bg-emerald-900/20 border-emerald-700/50"
-            : "bg-slate-800 border-slate-700"
+          active ? "bg-emerald-900/20 border-emerald-700/50" : "bg-slate-800 border-slate-700"
         }`}
       >
-        <Info
-          className={`w-5 h-5 shrink-0 mt-0.5 ${
-            data.learning_active ? "text-emerald-400" : "text-slate-400"
-          }`}
-        />
+        <Info className={`w-5 h-5 shrink-0 mt-0.5 ${active ? "text-emerald-400" : "text-slate-400"}`} />
         <div className="text-sm">
-          {data.learning_active ? (
+          {active ? (
             <>
-              <p className="text-emerald-300 font-medium">ระบบกำลังเรียนรู้จากผลจริงแล้ว</p>
+              <p className="text-emerald-300 font-medium">ระบบกำลังใช้น้ำหนักที่เรียนรู้จากผลจริงแล้ว</p>
               <p className="text-emerald-200/70 mt-1">
-                อ้างอิงจากการคาดการณ์ที่เทียบผลแล้ว {data.compared_samples} รายการ — น้ำหนักด้านล่างถูกปรับตามความแม่นยำจริงของแต่ละ Agent
+                อ้างอิงจากการประเมินผลแล้ว {totalEvals} รายการ — น้ำหนักด้านล่างถูกปรับตามความแม่นยำจริงของแต่ละ Agent
               </p>
             </>
           ) : (
             <>
               <p className="text-slate-200 font-medium">กำลังสะสมข้อมูลเพื่อเริ่มเรียนรู้</p>
               <p className="text-slate-400 mt-1">
-                มีข้อมูลเทียบผลแล้ว {data.compared_samples} รายการ (ต้องมีอย่างน้อย 8 รายการจึงจะเริ่มปรับน้ำหนักอัตโนมัติ) — ระหว่างนี้ใช้น้ำหนักมาตรฐาน
+                ประเมินผลแล้ว {totalEvals}/{MIN_EVALS_FOR_DYNAMIC} รายการ — เมื่อครบ {MIN_EVALS_FOR_DYNAMIC} ระบบจะเริ่มปรับน้ำหนักอัตโนมัติ (ระหว่างนี้ใช้น้ำหนักมาตรฐาน)
               </p>
             </>
           )}
@@ -97,8 +108,8 @@ export default function InsightsPage() {
       {/* best / worst */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
-          <p className="text-xs text-slate-400 uppercase tracking-wider">เทียบผลแล้ว</p>
-          <p className="text-3xl font-bold text-white mt-1">{data.compared_samples}</p>
+          <p className="text-xs text-slate-400 uppercase tracking-wider">ประเมินผลแล้ว</p>
+          <p className="text-3xl font-bold text-white mt-1">{totalEvals}</p>
           <p className="text-xs text-slate-500 mt-1">รายการ</p>
         </div>
         <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-center gap-4">
@@ -108,7 +119,7 @@ export default function InsightsPage() {
           <div>
             <p className="text-xs text-slate-400 uppercase tracking-wider">Agent แม่นสุด</p>
             <p className="text-xl font-bold text-emerald-400 mt-1">
-              {data.best_agent ? AGENT_LABELS[data.best_agent] ?? data.best_agent : "—"}
+              {bestAgent ? AGENT_LABELS[bestAgent.agent] ?? bestAgent.agent : "—"}
             </p>
           </div>
         </div>
@@ -119,7 +130,7 @@ export default function InsightsPage() {
           <div>
             <p className="text-xs text-slate-400 uppercase tracking-wider">ต้องปรับปรุง</p>
             <p className="text-xl font-bold text-red-400 mt-1">
-              {data.worst_agent ? AGENT_LABELS[data.worst_agent] ?? data.worst_agent : "—"}
+              {worstAgent ? AGENT_LABELS[worstAgent.agent] ?? worstAgent.agent : "—"}
             </p>
           </div>
         </div>
@@ -134,32 +145,30 @@ export default function InsightsPage() {
         <p className="text-slate-500 text-sm mb-5">คำนวณจากทิศทางที่แต่ละ Agent ทายไว้ เทียบกับผลจริง</p>
         {accData.length === 0 ? (
           <div className="text-slate-500 text-sm py-8 text-center">
-            ยังไม่มีข้อมูลเทียบผล — เริ่ม{" "}
+            ยังไม่มีข้อมูลประเมินผล — เริ่ม{" "}
             <a href="/analyze" className="text-sky-400 hover:underline">
               วิเคราะห์
             </a>{" "}
             แล้วรอเทียบผลตาม timeframe
           </div>
         ) : (
-          <>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={accData} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
-                <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 12 }} />
-                <YAxis domain={[0, 100]} stroke="#64748b" tick={{ fontSize: 12 }} unit="%" />
-                <Tooltip
-                  cursor={{ fill: "#1e293b" }}
-                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
-                  labelStyle={{ color: "#f1f5f9" }}
-                  formatter={(v: number, _n, p) => [`${v}% (${p.payload.samples} ครั้ง)`, "ความแม่นยำ"]}
-                />
-                <Bar dataKey="accuracy" radius={[4, 4, 0, 0]}>
-                  {accData.map((entry, i) => (
-                    <Cell key={i} fill={accuracyColor(entry.accuracy)} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={accData} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
+              <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 12 }} />
+              <YAxis domain={[0, 100]} stroke="#64748b" tick={{ fontSize: 12 }} unit="%" />
+              <Tooltip
+                cursor={{ fill: "#1e293b" }}
+                contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
+                labelStyle={{ color: "#f1f5f9" }}
+                formatter={(v: number, _n, p) => [`${v}% (${p.payload.samples} ครั้ง)`, "ความแม่นยำ"]}
+              />
+              <Bar dataKey="accuracy" radius={[4, 4, 0, 0]}>
+                {accData.map((entry, i) => (
+                  <Cell key={i} fill={accuracyColor(entry.accuracy)} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         )}
       </div>
 
@@ -190,7 +199,7 @@ export default function InsightsPage() {
       </div>
 
       <p className="text-xs text-slate-600 text-center pt-2">
-        ทุกการวิเคราะห์ใหม่จะอ้างอิงประวัติผลจริงของสินทรัพย์นั้น และใช้น้ำหนักที่เรียนรู้แล้วในการสรุปผล
+        ทุกการวิเคราะห์ใหม่จะดึงเคสประวัติที่คล้ายกัน (RAG) และใช้น้ำหนักที่เรียนรู้แล้วในการสรุปผล
       </p>
     </div>
   );

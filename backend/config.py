@@ -3,8 +3,10 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    anthropic_api_key: str = ""
-    database_url: str = "sqlite:///./agent_invest.db"
+    openrouter_api_key: str = ""
+    openrouter_model: str = "anthropic/claude-sonnet-4-6"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    database_url: str = "postgresql://agent:secret@localhost:5432/agent_invest"
     news_api_key: str = ""
     frontend_url: str = "http://localhost:3000"
     # Extra allowed CORS origins (comma-separated), e.g. your Cloudflare Workers URL.
@@ -12,7 +14,6 @@ class Settings(BaseSettings):
     # Regex allowing Cloudflare-hosted frontends (workers.dev / pages.dev) out of the box.
     cors_allow_origin_regex: str = r"https://.*\.(workers|pages)\.dev"
     fetch_interval_minutes: int = 30
-    claude_model: str = "claude-sonnet-4-6"
     telegram_bot_token: str = ""
     telegram_channel_id: str = ""
     telegram_community_chat_id: str = ""
@@ -68,8 +69,26 @@ class Settings(BaseSettings):
     calendar_alert_days_ahead: int = 3          # notify when an event is within N days
     calendar_report_days_ahead: int = 14        # window shown in the daily report section
 
+    # RAG settings
+    rag_enabled: bool = True
+    rag_top_k: int = 5
+    rag_min_score: float = 0.0
+    openrouter_embedding_model: str = "openai/text-embedding-3-small"
+
+    # Dataset collection (Phase 4)
+    auto_analyze_enabled: bool = False
+    auto_analyze_symbols: str = "AAPL,MSFT,NVDA,TSLA,SPY,QQQ,BTC-USD,ETH-USD"
+    auto_analyze_timeframe: str = "1w"
+    auto_analyze_interval_hours: int = 24
+
+    # Local fine-tuned model (Phase 5)
+    use_local_model: bool = False
+    local_model_url: str = "http://localhost:11434/v1"   # ollama or vllm
+    local_model_name: str = "agent-invest-7b"
+
     class Config:
         env_file = ".env"
+        extra = "ignore"  # tolerate unrelated env vars (deploy platforms inject their own)
 
 
 @lru_cache()

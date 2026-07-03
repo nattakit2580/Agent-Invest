@@ -5,13 +5,9 @@ from models.prediction import Prediction, MarketSnapshot
 from models.schemas import AnalyzeRequest, PredictionResponse
 from fetchers.market_fetcher import fetch_market_data
 from fetchers.news_fetcher import fetch_all_news
-from agents.orchestrator import Orchestrator, DIRECTION_WEIGHTS
-from utils.learning import (
-    adjust_weights,
-    get_agent_accuracy,
-    get_symbol_history,
-    summarize_history_for_prompt,
-)
+from agents.orchestrator import Orchestrator
+from services import rag as rag_service
+from services.agent_feedback import get_agent_feedback
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 orchestrator = Orchestrator()
@@ -26,22 +22,15 @@ def analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
 
     news = fetch_all_news(req.symbol.upper())
 
-    # Memory: recall this symbol's realized track record and feed it into the analysis.
-    symbol = req.symbol.upper()
-    history = get_symbol_history(db, symbol, limit=5)
-    history_summary = summarize_history_for_prompt(history, symbol)
-    # Learning: shift blend weights toward agents that have been more accurate.
-    agent_accuracy = get_agent_accuracy(db, symbol=symbol)
-    weights = adjust_weights(DIRECTION_WEIGHTS, agent_accuracy)
-
-    result = orchestrator.analyze(
-        symbol,
-        market_data,
-        news,
-        req.timeframe,
-        history_summary=history_summary,
-        weights=weights,
+    # RAG retrieval uses market_data only (agents haven't run yet).
+    # We pass agent_outputs=None intentionally — market context alone is sufficient
+    # for finding structurally similar past cases before agents produce their output.
+    similar_cases = rag_service.get_similar_cases(
+        req.symbol.upper(), market_data, None, db
     )
+
+    agent_fb = get_agent_feedback(db)
+    result = orchestrator.analyze(req.symbol.upper(), market_data, news, req.timeframe, similar_cases, agent_fb)
 
     snapshot = MarketSnapshot(
         symbol=req.symbol.upper(),
@@ -72,6 +61,9 @@ def analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
     db.add(prediction)
     db.commit()
     db.refresh(prediction)
+
+    rag_service.index_prediction(prediction, market_data, db)
+
     return prediction
 
 

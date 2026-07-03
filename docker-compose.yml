@@ -1,6 +1,23 @@
-﻿version: "3.9"
+version: "3.9"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-agent_invest}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agent}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -11,8 +28,10 @@ services:
       - ./backend:/app
       - ./data:/app/data
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - DATABASE_URL=sqlite:///./data/agent_invest.db
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-anthropic/claude-sonnet-4-6}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:-secret}@postgres:5432/${POSTGRES_DB:-agent_invest}
       - NEWS_API_KEY=${NEWS_API_KEY:-}
       - FRONTEND_URL=http://localhost:3000
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
@@ -37,6 +56,9 @@ services:
       - MONITOR_ECONOMIC_INDICATORS=${MONITOR_ECONOMIC_INDICATORS:-FOMC,CPI,PCE,NFP,GDP,PMI,Initial Jobless Claims,Unemployment Rate,Retail Sales,Core Inflation,ECB,BoJ,OPEC}
       - MONITOR_RSS_SOURCES=${MONITOR_RSS_SOURCES:-https://feeds.finance.yahoo.com/rss/2.0/headline,https://www.investing.com/rss/news.rss,https://cointelegraph.com/rss,https://coindesk.com/arc/outboundfeeds/rss/}
       - MONITOR_IPO_WATCHLIST_PATH=/app/data/ipo_watchlist.json
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -50,3 +72,6 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  pgdata:

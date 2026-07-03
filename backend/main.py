@@ -9,6 +9,8 @@ from api.export import router as export_router
 from api.telegram import router as telegram_router
 from api.economic import router as economic_router
 from api.calendar import router as calendar_router
+from api.rag import router as rag_router
+from api.dataset import router as dataset_router
 from tasks.scheduler import create_scheduler
 from config import get_settings
 
@@ -50,6 +52,8 @@ app.include_router(export_router)
 app.include_router(telegram_router)
 app.include_router(economic_router)
 app.include_router(calendar_router)
+app.include_router(rag_router)
+app.include_router(dataset_router)
 
 
 @app.get("/")
