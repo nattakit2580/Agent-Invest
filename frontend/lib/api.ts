@@ -2,8 +2,11 @@
 
 // เนเธเน /api เธเธถเนเธ Next.js เธเธฐ proxy เนเธเธซเธฒ backend เนเธ”เธขเธญเธฑเธ•เนเธเธกเธฑเธ•เธด
 // เธงเธดเธเธตเธเธตเนเธ—เธณเนเธซเนเนเธเน Cloudflare Tunnel เนเธ”เนเนเธ”เธขเนเธกเนเธ•เนเธญเธ expose backend port
+// Dev: unset -> uses "/api" which next.config.js rewrites() proxies to BACKEND_URL.
+// Prod (Cloudflare Workers): set NEXT_PUBLIC_API_URL to the deployed backend base URL
+// (browser calls it directly; backend CORS must allow this frontend's origin).
 export const api = axios.create({
-  baseURL: "/api",
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "/api",
 });
 
 export interface Prediction {
@@ -79,6 +82,52 @@ export interface TelegramAnalytics {
   daily_messages: TelegramDailyMessageCount[];
   recent_messages: TelegramRecentMessage[];
 }
+export interface EconomicIndicator {
+  series_id: string;
+  label: string;
+  value: number | null;
+  previous_value: number | null;
+  change: number | null;
+  change_pct: number | null;
+  unit: string | null;
+  observation_date: string | null;
+  updated_at: string | null;
+}
+
+export interface EconomicResponse {
+  configured: boolean;
+  count: number;
+  indicators: EconomicIndicator[];
+}
+
+export interface CalendarEvent {
+  event_type: "earnings" | "dividend" | "ipo" | "economic";
+  symbol: string | null;
+  title: string;
+  event_date: string;
+  days_until: number;
+  source: string | null;
+  notified_at: string | null;
+}
+
+export interface CalendarResponse {
+  count: number;
+  days_ahead: number;
+  events: CalendarEvent[];
+}
+
+export interface LearningInsights {
+  symbol: string | null;
+  compared_samples: number;
+  learning_active: boolean;
+  agent_accuracy: Record<string, number>;
+  agent_samples: Record<string, number>;
+  best_agent: string | null;
+  worst_agent: string | null;
+  base_weights: Record<string, number>;
+  learned_weights: Record<string, number>;
+}
+
 export const analyzeSymbol = (symbol: string, timeframe: string) =>
   api.post<Prediction>("/analyze", { symbol, timeframe }).then((r) => r.data);
 
@@ -98,3 +147,20 @@ export const getMarketData = (symbol: string) =>
   api.get(`/analyze/market/${symbol}`).then((r) => r.data);
 export const getTelegramAnalytics = (params?: Record<string, string | number>) =>
   api.get<TelegramAnalytics>("/telegram/analytics", { params }).then((r) => r.data);
+
+export const getEconomicIndicators = () =>
+  api.get<EconomicResponse>("/economic/indicators").then((r) => r.data);
+
+export const refreshEconomicIndicators = () =>
+  api.post<{ count: number; indicators: EconomicIndicator[] }>("/economic/refresh").then((r) => r.data);
+
+export const getCalendarEvents = (daysAhead = 14) =>
+  api.get<CalendarResponse>("/calendar/events", { params: { days_ahead: daysAhead } }).then((r) => r.data);
+
+export const refreshCalendar = () =>
+  api.post<{ touched: number; events: CalendarEvent[] }>("/calendar/refresh").then((r) => r.data);
+
+export const getLearningInsights = (symbol?: string) =>
+  api
+    .get<LearningInsights>("/accuracy/insights", { params: symbol ? { symbol } : undefined })
+    .then((r) => r.data);

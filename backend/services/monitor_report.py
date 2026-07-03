@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 from agents.base_agent import BaseAgent
 from config import get_settings
 from fetchers.agenda_fetcher import fetch_agenda_categories, load_ipo_watchlist, split_csv
+from fetchers.calendar_fetcher import get_upcoming_events
+from fetchers.economic_fetcher import fetch_economic_indicators
 from fetchers.market_fetcher import fetch_market_data
 
 
@@ -224,9 +226,11 @@ def _fallback_brief(categories: dict[str, list[dict[str, Any]]], watchlist: list
 def _generate_ai_brief(
     categories: dict[str, list[dict[str, Any]]],
     watchlist: list[dict[str, Any]],
+    economic_indicators: list[dict[str, Any]] | None = None,
     use_ai: bool | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
+    economic_indicators = economic_indicators or []
     effective_use_ai = settings.telegram_use_ai_summary if use_ai is None else use_ai
     if not effective_use_ai or not settings.anthropic_api_key:
         return _fallback_brief(categories, watchlist)
@@ -252,6 +256,16 @@ def _generate_ai_brief(
         }
         for item in watchlist[:8]
     ]
+    compact_economics = [
+        {
+            "label": item.get("label"),
+            "value": item.get("value"),
+            "change": item.get("change"),
+            "change_pct": item.get("change_pct"),
+            "date": item.get("observation_date"),
+        }
+        for item in economic_indicators[:15]
+    ]
 
     system = (
         "You are an institutional markets editor. Return ONLY valid JSON, no markdown. "
@@ -260,7 +274,7 @@ def _generate_ai_brief(
     user = f"""Create a concise daily Telegram brief from this monitor data.
 
 DATA:
-{json.dumps({"categories": compact_categories, "watchlist": compact_watchlist}, ensure_ascii=False)}
+{json.dumps({"categories": compact_categories, "watchlist": compact_watchlist, "economic_indicators": compact_economics}, ensure_ascii=False)}
 
 Return this exact JSON:
 {{
@@ -308,6 +322,52 @@ def _format_ipo(item: dict[str, Any]) -> str:
     return line
 
 
+_EVENT_TYPE_LABELS = {
+    "earnings": "Earnings",
+    "dividend": "Ex-Dividend",
+    "ipo": "IPO",
+    "economic": "Economic release",
+}
+
+
+def _format_calendar_event(item: dict[str, Any]) -> str:
+    label = _EVENT_TYPE_LABELS.get(item.get("event_type"), item.get("event_type", "event"))
+    title = item.get("title", "event")
+    event_date = item.get("event_date", "")
+    days_until = item.get("days_until")
+    if days_until == 0:
+        when = "today"
+    elif days_until == 1:
+        when = "in 1 day"
+    elif isinstance(days_until, int):
+        when = f"in {days_until} days"
+    else:
+        when = ""
+    when_text = f" ({when})" if when else ""
+    return f"- [{label}] {title} — {event_date}{when_text}"
+
+
+def _format_indicator(item: dict[str, Any]) -> str:
+    label = item.get("label", item.get("series_id", "indicator"))
+    value = item.get("value")
+    unit = item.get("unit") or ""
+    unit_suffix = f" {unit}" if unit else ""
+    date = item.get("observation_date") or ""
+    value_text = _fmt_price(value) if value is not None else "n/a"
+
+    change = item.get("change")
+    change_pct = item.get("change_pct")
+    if change is not None:
+        arrow = "up" if change > 0 else ("down" if change < 0 else "flat")
+        pct_text = f" ({_fmt_pct(change_pct)})" if change_pct is not None else ""
+        change_text = f" | {arrow} {change:+.2f}{pct_text} vs prev"
+    else:
+        change_text = ""
+
+    date_text = f" [{date}]" if date else ""
+    return f"- {label}: {value_text}{unit_suffix}{change_text}{date_text}"
+
+
 def render_daily_monitor_message(report: dict[str, Any]) -> str:
     categories = report["categories"]
     watchlist = report["watchlist"]
@@ -326,8 +386,10 @@ def render_daily_monitor_message(report: dict[str, Any]) -> str:
     for item in brief.get("daily_focus", [])[:4]:
         lines.append(f"- {item}")
 
+    settings = get_settings()
+    watchlist_limit = settings.telegram_private_report_max_assets
     lines.extend(["", "Watchlist assets"])
-    for item in watchlist[:8]:
+    for item in watchlist[:watchlist_limit]:
         symbol = item.get("symbol", "-")
         bias = item.get("bias", "watch")
         price = _fmt_price(item.get("price"))
@@ -337,11 +399,25 @@ def render_daily_monitor_message(report: dict[str, Any]) -> str:
         reasons = "; ".join(item.get("reasons", [])[:2])
         lines.append(f"- {symbol}: {price} ({change}) | {bias}{rsi_text} | {reasons}")
 
+    lines.extend(["", "Upcoming calendar (advance alerts)"])
+    upcoming_events = report.get("upcoming_events", [])
+    if upcoming_events:
+        lines.extend(_format_calendar_event(item) for item in upcoming_events[:12])
+    else:
+        lines.append("- No upcoming earnings / dividend / IPO events in the configured window.")
+
     lines.extend(["", "IPO agenda"])
     if ipo_agenda:
         lines.extend(_format_ipo(item) for item in ipo_agenda[:6])
     else:
         lines.append("- No IPO agenda detected from configured sources.")
+
+    lines.extend(["", "Economic indicators (latest actual)"])
+    economic_indicators = report.get("economic_indicators", [])
+    if economic_indicators:
+        lines.extend(_format_indicator(item) for item in economic_indicators)
+    else:
+        lines.append("- No economic indicator data available (set FRED_API_KEY to enable).")
 
     lines.extend(["", "Economic agenda"])
     economic_items = categories.get("economic_agenda", [])
@@ -442,7 +518,17 @@ def build_daily_monitor_report(
     categories = fetch_agenda_categories(max_items=max_news_items or settings.monitor_report_max_news_items)
     watchlist = build_watchlist_summary(symbols, categories=categories, max_assets=max_assets)
     ipo_agenda = build_ipo_agenda(categories)
-    brief = _generate_ai_brief(categories, watchlist, use_ai=use_ai)
+    try:
+        economic_indicators = fetch_economic_indicators()[: settings.monitor_economic_report_limit]
+    except Exception as exc:
+        print(f"[monitor_report] economic indicators unavailable: {exc}")
+        economic_indicators = []
+    try:
+        upcoming_events = get_upcoming_events()
+    except Exception as exc:
+        print(f"[monitor_report] upcoming events unavailable: {exc}")
+        upcoming_events = []
+    brief = _generate_ai_brief(categories, watchlist, economic_indicators, use_ai=use_ai)
 
     report = {
         "title": "Agent Invest Daily Monitor",
@@ -451,6 +537,8 @@ def build_daily_monitor_report(
         "categories": categories,
         "watchlist": watchlist,
         "ipo_agenda": ipo_agenda,
+        "economic_indicators": economic_indicators,
+        "upcoming_events": upcoming_events,
         "brief": brief,
     }
     report["message"] = render_daily_monitor_message(report)

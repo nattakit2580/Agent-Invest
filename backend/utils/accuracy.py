@@ -61,7 +61,7 @@ def compute_stats(predictions: list) -> dict:
         }
 
     direction_hits = sum(
-        1 for p in compared if p.predicted_direction == p.actual_direction
+        1 for p in compared if p.direction == p.actual_direction
     )
 
     by_tf: dict[str, dict] = {}
@@ -72,7 +72,7 @@ def compute_stats(predictions: list) -> dict:
             if key not in bucket:
                 bucket[key] = {"total": 0, "hits": 0, "avg_score": 0.0, "scores": []}
             bucket[key]["total"] += 1
-            if p.predicted_direction == p.actual_direction:
+            if p.direction == p.actual_direction:
                 bucket[key]["hits"] += 1
             if p.accuracy_score is not None:
                 bucket[key]["scores"].append(p.accuracy_score)

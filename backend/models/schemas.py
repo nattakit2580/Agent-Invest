@@ -81,6 +81,8 @@ class TelegramReportPreviewResponse(BaseModel):
     categories: dict[str, Any]
     watchlist: list[dict[str, Any]]
     ipo_agenda: list[dict[str, Any]]
+    economic_indicators: list[dict[str, Any]] = []
+    upcoming_events: list[dict[str, Any]] = []
     brief: dict[str, Any]
     message: str
 

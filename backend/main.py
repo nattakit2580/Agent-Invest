@@ -7,6 +7,8 @@ from api.predictions import router as predictions_router
 from api.accuracy import router as accuracy_router
 from api.export import router as export_router
 from api.telegram import router as telegram_router
+from api.economic import router as economic_router
+from api.calendar import router as calendar_router
 from tasks.scheduler import create_scheduler
 from config import get_settings
 
@@ -29,9 +31,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_cors_origins = [settings.frontend_url, "http://localhost:3000"]
+_cors_origins += [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:3000"],
+    allow_origins=list(dict.fromkeys(_cors_origins)),
+    allow_origin_regex=settings.cors_allow_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,6 +48,8 @@ app.include_router(predictions_router)
 app.include_router(accuracy_router)
 app.include_router(export_router)
 app.include_router(telegram_router)
+app.include_router(economic_router)
+app.include_router(calendar_router)
 
 
 @app.get("/")

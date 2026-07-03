@@ -47,6 +47,37 @@ class MarketSnapshot(Base):
     sma_50 = Column(Float, nullable=True)
     extra = Column(JSON, nullable=True)
 
+class EconomicIndicator(Base):
+    __tablename__ = "economic_indicators"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    series_id = Column(String(40), nullable=False, unique=True, index=True)  # FRED series id
+    label = Column(String(80), nullable=False)
+    value = Column(Float, nullable=True)
+    previous_value = Column(Float, nullable=True)
+    change = Column(Float, nullable=True)
+    change_pct = Column(Float, nullable=True)
+    unit = Column(String(60), nullable=True)
+    observation_date = Column(String(10), nullable=True)   # date of the latest reading
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class CalendarEvent(Base):
+    __tablename__ = "calendar_events"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    event_type = Column(String(20), nullable=False, index=True)   # earnings / dividend / ipo / economic
+    symbol = Column(String(20), nullable=True, index=True)
+    title = Column(String(240), nullable=False)
+    event_date = Column(String(10), nullable=False, index=True)    # YYYY-MM-DD
+    dedupe_key = Column(String(120), nullable=False, unique=True, index=True)
+    source = Column(String(60), nullable=True)
+    extra = Column(JSON, nullable=True)
+    notified_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class MonitorReport(Base):
     __tablename__ = "monitor_reports"
 

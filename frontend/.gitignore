@@ -1,0 +1,19 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# opennext / cloudflare
+/.open-next/
+.wrangler/
+.dev.vars
+
+# production env (contains backend URL) — set per-environment, do not commit real values
+.env.production
+.env*.local
+
+# misc
+*.tsbuildinfo
+next-env.d.ts

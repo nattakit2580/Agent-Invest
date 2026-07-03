@@ -5,7 +5,13 @@ from models.prediction import Prediction, MarketSnapshot
 from models.schemas import AnalyzeRequest, PredictionResponse
 from fetchers.market_fetcher import fetch_market_data
 from fetchers.news_fetcher import fetch_all_news
-from agents.orchestrator import Orchestrator
+from agents.orchestrator import Orchestrator, DIRECTION_WEIGHTS
+from utils.learning import (
+    adjust_weights,
+    get_agent_accuracy,
+    get_symbol_history,
+    summarize_history_for_prompt,
+)
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 orchestrator = Orchestrator()
@@ -19,7 +25,23 @@ def analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"Failed to fetch market data: {str(e)}")
 
     news = fetch_all_news(req.symbol.upper())
-    result = orchestrator.analyze(req.symbol.upper(), market_data, news, req.timeframe)
+
+    # Memory: recall this symbol's realized track record and feed it into the analysis.
+    symbol = req.symbol.upper()
+    history = get_symbol_history(db, symbol, limit=5)
+    history_summary = summarize_history_for_prompt(history, symbol)
+    # Learning: shift blend weights toward agents that have been more accurate.
+    agent_accuracy = get_agent_accuracy(db, symbol=symbol)
+    weights = adjust_weights(DIRECTION_WEIGHTS, agent_accuracy)
+
+    result = orchestrator.analyze(
+        symbol,
+        market_data,
+        news,
+        req.timeframe,
+        history_summary=history_summary,
+        weights=weights,
+    )
 
     snapshot = MarketSnapshot(
         symbol=req.symbol.upper(),

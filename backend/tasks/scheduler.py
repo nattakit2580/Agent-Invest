@@ -4,8 +4,10 @@ from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models.prediction import MonitorReport, Prediction
+from models.prediction import CalendarEvent, MonitorReport, Prediction
 from fetchers.market_fetcher import fetch_actual_price
+from fetchers.economic_fetcher import fetch_economic_indicators
+from fetchers.calendar_fetcher import refresh_calendar_events
 from services.monitor_report import build_daily_monitor_report, render_public_monitor_message
 from services.telegram_client import TelegramClient, TelegramSendError
 from utils.accuracy import calc_direction_from_prices, calc_accuracy_score
@@ -43,6 +45,100 @@ def auto_compare_due_predictions():
         db.commit()
     except Exception as e:
         print(f"[Scheduler] auto_compare error: {e}")
+    finally:
+        db.close()
+
+
+def refresh_economic_indicators():
+    if not settings.fred_api_key:
+        return
+    try:
+        indicators = fetch_economic_indicators()
+        print(f"[Scheduler] refreshed {len(indicators)} economic indicators from FRED")
+    except Exception as e:
+        print(f"[Scheduler] economic refresh error: {e}")
+
+
+EVENT_TYPE_LABELS = {
+    "earnings": "Earnings",
+    "dividend": "Ex-Dividend",
+    "ipo": "IPO",
+    "economic": "Economic release",
+}
+
+
+def _alert_target_chat_ids() -> list[str]:
+    ids: list[str] = []
+    if settings.telegram_daily_report_enabled and settings.telegram_channel_id:
+        ids.append(settings.telegram_channel_id)
+    if settings.telegram_paid_report_enabled and settings.telegram_paid_chat_id:
+        ids.append(settings.telegram_paid_chat_id)
+    # de-dup while preserving order
+    return list(dict.fromkeys(ids))
+
+
+def check_and_alert_calendar_events():
+    """Refresh the calendar, then push a one-time advance alert for events within N days."""
+    if not settings.calendar_alert_enabled:
+        return
+
+    try:
+        refresh_calendar_events()
+    except Exception as e:
+        print(f"[Scheduler] calendar refresh error: {e}")
+
+    days_ahead = settings.calendar_alert_days_ahead
+    today = datetime.now(timezone.utc).date()
+    horizon = (today + timedelta(days=days_ahead)).isoformat()
+    today_iso = today.isoformat()
+
+    db: Session = SessionLocal()
+    try:
+        due = (
+            db.query(CalendarEvent)
+            .filter(
+                CalendarEvent.notified_at.is_(None),
+                CalendarEvent.event_date >= today_iso,
+                CalendarEvent.event_date <= horizon,
+            )
+            .order_by(CalendarEvent.event_date.asc())
+            .all()
+        )
+        if not due:
+            return
+
+        lines = ["Agent Invest — Upcoming events alert", f"(next {days_ahead} day(s))", ""]
+        for ev in due:
+            label = EVENT_TYPE_LABELS.get(ev.event_type, ev.event_type)
+            lines.append(f"- [{label}] {ev.title} — {ev.event_date}")
+        lines.append("")
+        lines.append("Disclaimer: automated calendar alert, verify primary sources before trading.")
+        message = "\n".join(lines)
+
+        target_ids = _alert_target_chat_ids()
+        sent_ok = True
+        if target_ids:
+            client = TelegramClient()
+            if client.bot_configured:
+                for chat_id in target_ids:
+                    try:
+                        client.send_message(message, chat_id=chat_id)
+                    except Exception as e:
+                        sent_ok = False
+                        print(f"[Scheduler] calendar alert send error ({chat_id}): {e}")
+            else:
+                sent_ok = False
+                print("[Scheduler] calendar alert skipped: bot not configured")
+        else:
+            print("[Scheduler] calendar alert: no target chats; marking as notified")
+
+        if sent_ok:
+            now = datetime.now(timezone.utc)
+            for ev in due:
+                ev.notified_at = now
+            db.commit()
+    except Exception as e:
+        print(f"[Scheduler] calendar alert error: {e}")
     finally:
         db.close()
 
@@ -144,6 +240,28 @@ def create_scheduler() -> BackgroundScheduler:
         id="auto_compare",
         replace_existing=True,
     )
+
+    if settings.fred_api_key:
+        scheduler.add_job(
+            refresh_economic_indicators,
+            trigger=IntervalTrigger(hours=12),
+            id="refresh_economic_indicators",
+            replace_existing=True,
+            next_run_time=datetime.now(timezone.utc),
+        )
+
+    if settings.calendar_alert_enabled:
+        scheduler.add_job(
+            check_and_alert_calendar_events,
+            trigger=CronTrigger(
+                hour=settings.telegram_daily_report_hour,
+                minute=max(0, settings.telegram_daily_report_minute - 5),
+                timezone=settings.telegram_timezone,
+            ),
+            id="calendar_alerts",
+            replace_existing=True,
+            next_run_time=datetime.now(timezone.utc),
+        )
 
     if _telegram_reporting_enabled():
         try:

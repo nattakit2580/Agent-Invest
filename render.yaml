@@ -1,0 +1,40 @@
+# Render Blueprint for the Agent Invest backend (FastAPI).
+# Deploy: push to GitHub, then in Render -> New -> Blueprint -> pick this repo.
+# Secrets (sync:false) are entered in the Render dashboard, not committed here.
+services:
+  - type: web
+    name: agent-invest-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # --- required ---
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: FRONTEND_URL          # your Cloudflare Workers URL (enables CORS)
+        sync: false
+      # --- data sources (optional but recommended) ---
+      - key: FRED_API_KEY
+        sync: false
+      - key: NEWS_API_KEY
+        sync: false
+      # --- storage (ephemeral on free plan; use Postgres/Disk for persistence) ---
+      - key: DATABASE_URL
+        value: sqlite:///./agent_invest.db
+      # --- CORS ---
+      - key: CORS_ALLOW_ORIGIN_REGEX
+        value: https://.*\.(workers|pages)\.dev
+      # --- Telegram (optional; leave blank to disable) ---
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHANNEL_ID
+        sync: false
+      - key: TELEGRAM_ADMIN_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET_TOKEN
+        sync: false
+      - key: TELEGRAM_TIMEZONE
+        value: Asia/Bangkok

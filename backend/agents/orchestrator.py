@@ -46,13 +46,14 @@ class Orchestrator:
                     }
         return results
 
-    def _weighted_direction(self, agent_outputs: dict) -> tuple[str, float]:
+    def _weighted_direction(self, agent_outputs: dict, weights: dict | None = None) -> tuple[str, float]:
+        weights = weights or DIRECTION_WEIGHTS
         weighted_score = 0.0
         total_weight = 0.0
         weighted_confidence = 0.0
 
         for name, output in agent_outputs.items():
-            weight = DIRECTION_WEIGHTS.get(name, 0.25)
+            weight = weights.get(name, 0.25)
             direction = output.get("direction", "neutral")
             confidence = float(output.get("confidence", 0.5))
             score = DIRECTION_SCORE.get(direction, 0.0)
@@ -72,8 +73,16 @@ class Orchestrator:
 
         return direction, round(min(max(final_confidence, 0.0), 1.0), 3)
 
-    def synthesize(self, symbol: str, market_data: dict, agent_outputs: dict, timeframe: str) -> dict:
-        direction, confidence = self._weighted_direction(agent_outputs)
+    def synthesize(
+        self,
+        symbol: str,
+        market_data: dict,
+        agent_outputs: dict,
+        timeframe: str,
+        history_summary: str | None = None,
+        weights: dict | None = None,
+    ) -> dict:
+        direction, confidence = self._weighted_direction(agent_outputs, weights)
 
         current_price = market_data.get("price", 0)
         target_price = None
@@ -94,6 +103,14 @@ class Orchestrator:
             "You are a senior investment analyst synthesizing multiple analysis reports. "
             "Return ONLY valid JSON. No markdown."
         )
+        memory_block = ""
+        if history_summary:
+            memory_block = f"""
+
+PRIOR TRACK RECORD (system memory — learn from past hits/misses on this symbol):
+{history_summary}
+"""
+
         user = f"""Synthesize these analysis reports for {symbol} ({timeframe} outlook):
 
 {summaries}
@@ -101,7 +118,7 @@ class Orchestrator:
 KEY POINTS FROM ALL AGENTS:
 {chr(10).join(f'- {p}' for p in all_key_points)}
 
-MARKET DATA: Price={current_price}, Change={market_data.get('price_change_pct')}%
+MARKET DATA: Price={current_price}, Change={market_data.get('price_change_pct')}%{memory_block}
 
 Return this exact JSON:
 {{
@@ -132,8 +149,24 @@ Return this exact JSON:
             "catalysts": synth.get("catalysts", []),
             "recommendation": synth.get("recommendation", ""),
             "agent_outputs": agent_outputs,
+            "applied_weights": weights or DIRECTION_WEIGHTS,
         }
 
-    def analyze(self, symbol: str, market_data: dict, news: list[dict], timeframe: str = "1w") -> dict:
+    def analyze(
+        self,
+        symbol: str,
+        market_data: dict,
+        news: list[dict],
+        timeframe: str = "1w",
+        history_summary: str | None = None,
+        weights: dict | None = None,
+    ) -> dict:
         agent_outputs = self.run_all_agents(symbol, market_data, news)
-        return self.synthesize(symbol, market_data, agent_outputs, timeframe)
+        return self.synthesize(
+            symbol,
+            market_data,
+            agent_outputs,
+            timeframe,
+            history_summary=history_summary,
+            weights=weights,
+        )

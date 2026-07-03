@@ -4,6 +4,8 @@ from typing import Optional
 from database import get_db
 from models.prediction import Prediction
 from models.schemas import AccuracyStats
+from agents.orchestrator import DIRECTION_WEIGHTS
+from utils.learning import adjust_weights, get_agent_accuracy
 
 router = APIRouter(prefix="/accuracy", tags=["accuracy"])
 
@@ -68,3 +70,29 @@ def get_accuracy_stats(
         by_timeframe=fmt(by_tf),
         by_symbol=fmt(by_sym),
     )
+
+
+@router.get("/insights")
+def get_learning_insights(
+    symbol: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """What the system has learned: per-agent realized accuracy and the resulting blend weights."""
+    agent_accuracy = get_agent_accuracy(db, symbol=symbol.upper() if symbol else None)
+    learned_weights = adjust_weights(DIRECTION_WEIGHTS, agent_accuracy)
+
+    per_agent = agent_accuracy.get("per_agent", {})
+    best_agent = max(per_agent, key=per_agent.get) if per_agent else None
+    worst_agent = min(per_agent, key=per_agent.get) if per_agent else None
+
+    return {
+        "symbol": symbol.upper() if symbol else None,
+        "compared_samples": agent_accuracy.get("samples", 0),
+        "learning_active": agent_accuracy.get("sufficient", False),
+        "agent_accuracy": per_agent,
+        "agent_samples": agent_accuracy.get("per_agent_samples", {}),
+        "best_agent": best_agent,
+        "worst_agent": worst_agent,
+        "base_weights": DIRECTION_WEIGHTS,
+        "learned_weights": learned_weights,
+    }

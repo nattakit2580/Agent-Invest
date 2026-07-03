@@ -1,87 +1,28 @@
 # Agent Invest
 
-Agent Invest is a full-stack investment monitoring and AI analysis system. It combines a FastAPI backend, a Next.js dashboard, market/news fetchers, multi-agent analysis, prediction tracking, accuracy review, export tools, and a Telegram bot system for channels, private chats, and communities.
+Agent Invest is a private full-stack investment monitoring system. It includes a FastAPI backend, a Next.js dashboard, AI-assisted investment analysis, prediction tracking, report exports, and a Telegram bot for channels, private chats, and communities.
 
-## What This Project Does
+This README is intentionally ASCII-safe so it renders correctly in GitHub, Windows terminals, and editors that may not auto-detect UTF-8.
+
+## What The System Does
 
 - Analyze investment symbols with multiple AI agents.
 - Store predictions and compare them with later market prices.
-- Track model accuracy by timeframe and symbol.
-- Build market monitor reports from watchlists, RSS/news sources, IPO agenda, and optional AI summaries.
-- Send Telegram updates to a one-way channel.
-- Let users chat privately with the Telegram bot using commands or natural language.
-- Collect Telegram community/private-chat analytics for upsell and product insight.
-- Split free community updates and paid/subscriber updates.
+- Track prediction accuracy by timeframe and symbol.
+- Fetch market data, news, economic agenda, and IPO agenda.
+- Build daily monitor reports for Telegram.
+- Send one-way updates to a Telegram channel.
+- Reply to private Telegram bot chats by command or natural-language intent.
+- Collect Telegram community analytics for topics, intents, keywords, and activity.
+- Send limited previews to a free community and full reports to a paid target.
 
-## Main Features
-
-### Web Dashboard
-
-- Dashboard overview
-- New symbol analysis
-- Prediction history
-- Prediction detail and auto-compare
-- Accuracy dashboard
-- Export page
-- Telegram analytics dashboard
-
-Frontend runs with Next.js in `frontend/`.
-
-### Backend API
-
-Backend runs with FastAPI in `backend/`.
-
-Key API groups:
-
-- `/analyze`
-- `/predictions`
-- `/accuracy`
-- `/export`
-- `/telegram`
-
-Open local API docs at:
-
-```text
-http://localhost:8000/docs
-```
-
-### Telegram Bot Modes
-
-1. **Channel broadcast**
-   Sends one-way updates to a Telegram channel.
-
-2. **Private chat bot**
-   Users can chat with the bot using commands such as:
-
-   ```text
-   /news
-   /watchlist
-   /ipo
-   /ipohk
-   /checkaddress <wallet>
-   /report
-   /help
-   ```
-
-   Natural language intent matching is also supported, for example:
-
-   ```text
-   เธญเธขเธฒเธเธ”เธน IPO เธฎเนเธญเธเธเธ
-   เธซเธธเนเธเธ—เธตเนเธเธงเธฃเธ•เธดเธ”เธ•เธฒเธกเธงเธฑเธเธเธตเน
-   เธญเธขเธฒเธเธ•เธฃเธงเธเธเธฃเธฐเน€เธเนเธฒเธเธฃเธดเธเนเธ• 0x0000000000000000000000000000000000000000
-   เธเธญเธเนเธฒเธงเธ—เธตเนเธเนเธฒเธเธฑเธเธ•เธฒ
-   ```
-
-3. **Community and paid content**
-   - Free community receives limited public previews.
-   - Paid/subscriber target receives full reports.
-   - Group/private messages are stored for topic, intent, keyword, and activity analytics.
-
-More details are in [docs/telegram-bot.md](docs/telegram-bot.md).
-
-## Tech Stack
+## Main Parts
 
 ### Backend
+
+Backend source lives in `backend/`.
+
+Stack:
 
 - Python 3.11+
 - FastAPI
@@ -92,7 +33,17 @@ More details are in [docs/telegram-bot.md](docs/telegram-bot.md).
 - feedparser
 - Anthropic API integration
 
+Local API docs:
+
+```text
+http://localhost:8000/docs
+```
+
 ### Frontend
+
+Frontend source lives in `frontend/`.
+
+Stack:
 
 - Next.js 14
 - React 18
@@ -101,63 +52,127 @@ More details are in [docs/telegram-bot.md](docs/telegram-bot.md).
 - Recharts
 - lucide-react
 
+Main pages:
+
+- `/` - main dashboard
+- `/analyze` - create a new analysis
+- `/predictions` - prediction history
+- `/accuracy` - accuracy dashboard
+- `/export` - export tools
+- `/telegram` - Telegram analytics dashboard
+
+### Telegram Bot
+
+The Telegram system supports 3 modes.
+
+1. Channel broadcast
+   - Sends one-way monitor updates to a Telegram channel.
+
+2. Private bot chat
+   - Users can ask the bot for specific information.
+   - Supported commands include:
+
+```text
+/news
+/watchlist
+/ipo
+/ipohk
+/checkaddress <wallet>
+/report
+/help
+```
+
+Natural-language intent matching is also supported. Example meanings:
+
+```text
+Ask for Hong Kong IPO updates
+Ask for today's watchlist
+Ask to check a crypto wallet address
+Ask for noteworthy market news
+```
+
+3. Free and paid community
+   - Free community gets a limited public preview.
+   - Paid target gets the full report.
+   - Incoming private/group messages are stored for analytics.
+
+Full Telegram setup details are in `docs/telegram-bot.md`.
+
 ## Project Structure
 
 ```text
 .
-โ”โ”€โ”€ backend/
-โ”   โ”โ”€โ”€ agents/              # AI analysis agents
-โ”   โ”โ”€โ”€ api/                 # FastAPI routers
-โ”   โ”โ”€โ”€ fetchers/            # Market/news/agenda fetchers
-โ”   โ”โ”€โ”€ models/              # SQLAlchemy and Pydantic models
-โ”   โ”โ”€โ”€ services/            # Telegram and monitor report services
-โ”   โ”โ”€โ”€ tasks/               # Scheduler jobs
-โ”   โ”โ”€โ”€ utils/
-โ”   โ”โ”€โ”€ main.py              # FastAPI entrypoint
-โ”   โ””โ”€โ”€ requirements.txt
-โ”โ”€โ”€ frontend/
-โ”   โ”โ”€โ”€ app/                 # Next.js app routes
-โ”   โ”โ”€โ”€ components/
-โ”   โ”โ”€โ”€ lib/
-โ”   โ””โ”€โ”€ package.json
-โ”โ”€โ”€ data/
-โ”   โ”โ”€โ”€ ipo_watchlist.json
-โ”   โ””โ”€โ”€ ipo_watchlist.example.json
-โ”โ”€โ”€ docs/
-โ”   โ””โ”€โ”€ telegram-bot.md
-โ”โ”€โ”€ docker-compose.yml
-โ”โ”€โ”€ setup.ps1
-โ””โ”€โ”€ start.ps1
+|-- backend/
+|   |-- agents/              # AI analysis agents
+|   |-- api/                 # FastAPI routers
+|   |-- fetchers/            # Market, news, and agenda fetchers
+|   |-- models/              # SQLAlchemy and Pydantic models
+|   |-- services/            # Telegram and monitor report services
+|   |-- tasks/               # Scheduler jobs
+|   |-- utils/
+|   |-- main.py              # FastAPI entrypoint
+|   `-- requirements.txt
+|-- frontend/
+|   |-- app/                 # Next.js app routes
+|   |-- components/
+|   |-- lib/
+|   `-- package.json
+|-- data/
+|   |-- ipo_watchlist.json
+|   `-- ipo_watchlist.example.json
+|-- docs/
+|   `-- telegram-bot.md
+|-- docker-compose.yml
+|-- setup.ps1
+`-- start.ps1
 ```
 
 ## Local Setup
 
-### 1. Install Dependencies
+### Option A: PowerShell scripts
 
-PowerShell:
+Install dependencies:
 
 ```powershell
 .\setup.ps1
 ```
 
-Manual backend setup:
+Start backend and frontend:
+
+```powershell
+.\start.ps1
+```
+
+Default URLs:
+
+```text
+Frontend: http://localhost:3000
+Backend:  http://localhost:8000
+API Docs: http://localhost:8000/docs
+```
+
+### Option B: Manual setup
+
+Backend:
 
 ```powershell
 cd backend
 pip install -r requirements.txt
 copy .env.example .env
+uvicorn main:app --reload --port 8000
 ```
 
-Manual frontend setup:
+Frontend:
 
 ```powershell
 cd frontend
 npm install
+npm run dev
 ```
 
-### 2. Configure Environment
+## Environment Variables
 
-Edit:
+Edit this file after setup:
 
 ```text
 backend/.env
@@ -189,79 +204,36 @@ TELEGRAM_TIMEZONE=Asia/Bangkok
 
 Do not commit `backend/.env`. It is ignored by `.gitignore`.
 
-### 3. Start the App
-
-PowerShell:
-
-```powershell
-.\start.ps1
-```
-
-Manual backend:
-
-```powershell
-cd backend
-uvicorn main:app --reload --port 8000
-```
-
-Manual frontend:
-
-```powershell
-cd frontend
-npm run dev
-```
-
-Default URLs:
-
-```text
-Frontend: http://localhost:3000
-Backend:  http://localhost:8000
-API Docs: http://localhost:8000/docs
-```
-
-## Docker Compose
-
-Set values in a root `.env` file, then run:
-
-```powershell
-docker compose up --build
-```
-
-Services:
-
-- Backend: `http://localhost:8000`
-- Frontend: `http://localhost:3000`
-
 ## Telegram Setup Summary
 
 1. Create a bot with `@BotFather`.
-2. Copy the bot token to `TELEGRAM_BOT_TOKEN`.
+2. Copy the API token to `TELEGRAM_BOT_TOKEN`.
 3. Set `TELEGRAM_BOT_USERNAME` to the bot username without `@`.
-4. Add the bot as admin to the channel/group.
-5. For group analytics, disable privacy mode in BotFather with `/setprivacy`.
-6. Use `getUpdates` or `backend/get_group_id.py` to get private chat/group/channel IDs.
-7. Register the webhook:
+4. Add the bot as admin to the channel and group.
+5. Disable bot privacy mode in BotFather if group analytics should collect normal group messages.
+6. Find chat IDs with Telegram `getUpdates` or `backend/get_group_id.py`.
+7. Register the webhook with a public HTTPS backend URL.
+
+Register webhook example:
 
 ```bash
 curl -X POST http://localhost:8000/telegram/webhook/register \
   -H "Content-Type: application/json" \
   -H "X-Admin-Token: <TELEGRAM_ADMIN_TOKEN>" \
-  -d '{"webhook_url":"https://your-public-domain.com/telegram/webhook","drop_pending_updates":true}'
+  -d "{\"webhook_url\":\"https://your-public-domain.com/telegram/webhook\",\"drop_pending_updates\":true}"
 ```
 
 Webhook URL must be public HTTPS. Cloudflare Tunnel can be used for local testing.
 
-Full instructions are in [docs/telegram-bot.md](docs/telegram-bot.md).
-
 ## Useful API Endpoints
 
-### Health
+Health:
 
 ```text
 GET /health
 ```
 
-### Telegram
+Telegram:
 
 ```text
 GET  /telegram/status
@@ -275,7 +247,7 @@ GET  /telegram/analytics
 GET  /telegram/reports
 ```
 
-### Predictions and Accuracy
+Predictions and accuracy:
 
 ```text
 POST /analyze
@@ -283,6 +255,21 @@ GET  /predictions
 GET  /predictions/{id}
 POST /predictions/{id}/auto-compare
 GET  /accuracy
+```
+
+## Docker Compose
+
+Set values in a root `.env` file, then run:
+
+```powershell
+docker compose up --build
+```
+
+Services:
+
+```text
+Backend:  http://localhost:8000
+Frontend: http://localhost:3000
 ```
 
 ## Validation Commands
@@ -300,9 +287,16 @@ cd frontend
 npm run build
 ```
 
+Git checks:
+
+```powershell
+git diff --check
+git status -sb
+```
+
 ## Security Notes
 
-- The GitHub repo is private.
+- This GitHub repository is private.
 - `.env`, logs, local databases, `node_modules`, `.next`, and runtime tunnel files are ignored.
 - Never commit real API keys, Telegram bot tokens, or admin tokens.
 - Use `TELEGRAM_WEBHOOK_SECRET_TOKEN` to reject fake webhook requests.
@@ -310,10 +304,10 @@ npm run build
 
 ## Collaboration
 
-For friends or teammates to access this private repository, invite their GitHub username as a collaborator from GitHub repository settings:
+To invite a friend to this private repository:
 
 ```text
-Settings -> Collaborators -> Add people
+GitHub repository -> Settings -> Collaborators -> Add people
 ```
 
 Recommended permission for normal development is `Write`.
