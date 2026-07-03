@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     telegram_paid_chat_id: str = ""
     telegram_webhook_secret_token: str = ""
     telegram_admin_token: str = ""
+    # Bot 2 — ส่งขนานกับ bot 1
+    telegram_bot2_token: str = ""
+    telegram_bot2_channel_id: str = ""
     telegram_daily_report_enabled: bool = False
     telegram_community_report_enabled: bool = False
     telegram_paid_report_enabled: bool = False

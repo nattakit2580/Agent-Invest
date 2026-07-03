@@ -9,7 +9,7 @@ from models.evaluation import EvaluationResult
 from fetchers.market_fetcher import fetch_actual_price, fetch_market_data
 from fetchers.news_fetcher import fetch_all_news
 from services.monitor_report import build_daily_monitor_report, render_public_monitor_message
-from services.telegram_client import TelegramClient, TelegramSendError
+from services.telegram_client import TelegramClient, TelegramSendError, broadcast_parallel
 from utils.accuracy import calc_direction_from_prices, calc_accuracy_score, build_evaluation
 from config import get_settings
 
@@ -180,6 +180,7 @@ def send_daily_telegram_monitor():
         print("[Scheduler] telegram monitor skipped: TELEGRAM_BOT_TOKEN is not configured")
         return
 
+    # bot1 targets (with report_type metadata for DB logging)
     targets: list[tuple[str, str, bool]] = []
     if settings.telegram_daily_report_enabled and settings.telegram_channel_id:
         targets.append((settings.telegram_channel_id, "daily_monitor", False))
@@ -195,16 +196,25 @@ def send_daily_telegram_monitor():
     db: Session = SessionLocal()
     try:
         report = build_daily_monitor_report()
+
+        # bot1: send to all configured targets (logs to DB)
         for chat_id, report_type, public_preview in targets:
             message = render_public_monitor_message(report) if public_preview else report["message"]
             _send_report_to_chat(
-                db,
-                client,
-                report,
-                chat_id=chat_id,
-                report_type=report_type,
-                message=message,
+                db, client, report,
+                chat_id=chat_id, report_type=report_type, message=message,
             )
+
+        # bot2: ส่งขนานกับ bot1 ถ้า configure ไว้
+        if settings.telegram_bot2_token and settings.telegram_bot2_channel_id:
+            main_message = report["message"]
+            results = broadcast_parallel(
+                main_message,
+                extra_targets=[(settings.telegram_bot2_token, settings.telegram_bot2_channel_id)],
+            )
+            for label, status in results.items():
+                print(f"[Scheduler] parallel send {label}: {status}")
+
     except Exception as e:
         print(f"[Scheduler] telegram monitor error: {e}")
     finally:

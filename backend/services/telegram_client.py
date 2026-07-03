@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
@@ -128,6 +129,19 @@ class TelegramClient:
             results.append(self._request("sendMessage", payload).get("result", {}))
         return results
 
+    @classmethod
+    def all_configured_bots(cls) -> list["TelegramClient"]:
+        """Return list of all configured bots (bot1 + bot2 if set)."""
+        settings = get_settings()
+        bots = []
+        if settings.telegram_bot_token:
+            bots.append(cls(bot_token=settings.telegram_bot_token,
+                            channel_id=settings.telegram_channel_id))
+        if settings.telegram_bot2_token and settings.telegram_bot2_channel_id:
+            bots.append(cls(bot_token=settings.telegram_bot2_token,
+                            channel_id=settings.telegram_bot2_channel_id))
+        return bots
+
     def set_webhook(
         self,
         webhook_url: str,
@@ -153,3 +167,51 @@ class TelegramClient:
 
     def get_webhook_info(self) -> dict[str, Any]:
         return self._request("getWebhookInfo", timeout=20)
+
+
+def broadcast_parallel(
+    message: str,
+    *,
+    parse_mode: str | None = None,
+    extra_targets: list[tuple[str, str]] | None = None,
+) -> dict[str, str]:
+    """
+    ส่งข้อความพร้อมกันจากทุกบอทที่ configure ไว้ + extra_targets เพิ่มเติม
+
+    extra_targets: list of (bot_token, chat_id) tuples สำหรับ targets นอกเหนือจาก config
+
+    Returns dict: {label: "ok" | error_message}
+    """
+    settings = get_settings()
+
+    targets: list[tuple[str, str, str]] = []  # (label, token, chat_id)
+
+    if settings.telegram_bot_token and settings.telegram_channel_id:
+        targets.append(("bot1", settings.telegram_bot_token, settings.telegram_channel_id))
+
+    if settings.telegram_bot2_token and settings.telegram_bot2_channel_id:
+        targets.append(("bot2", settings.telegram_bot2_token, settings.telegram_bot2_channel_id))
+
+    for i, (token, chat_id) in enumerate(extra_targets or [], start=3):
+        targets.append((f"bot{i}", token, chat_id))
+
+    if not targets:
+        return {}
+
+    def _send(label: str, token: str, chat_id: str) -> tuple[str, str]:
+        try:
+            client = TelegramClient(bot_token=token, channel_id=chat_id)
+            client.send_message(message, parse_mode=parse_mode)
+            return label, "ok"
+        except Exception as e:
+            return label, str(e)
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(targets)) as executor:
+        futures = {executor.submit(_send, label, token, chat_id): label
+                   for label, token, chat_id in targets}
+        for future in as_completed(futures):
+            label, status = future.result()
+            results[label] = status
+
+    return results
