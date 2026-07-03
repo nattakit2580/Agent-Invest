@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     rag_enabled: bool = True
     rag_top_k: int = 5
     rag_min_score: float = 0.0
+    # Embedding provider — separate from OpenRouter (OpenRouter ไม่รองรับ /embeddings)
+    # Default: Jina AI (free 1M tokens/month) — https://jina.ai/?sui=apikey
+    # Alternative: OpenAI direct — set base_url=https://api.openai.com/v1, model=text-embedding-3-small, dim=1536
+    embedding_api_key: str = ""
+    embedding_base_url: str = "https://api.jina.ai/v1"
+    embedding_model: str = "jina-embeddings-v2-base-en"
+    embedding_dim: int = 768
+    # kept for backward compat (unused)
     openrouter_embedding_model: str = "openai/text-embedding-3-small"
 
     # Dataset collection (Phase 4)
@@ -63,6 +71,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 @lru_cache()

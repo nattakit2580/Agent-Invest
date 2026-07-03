@@ -31,15 +31,15 @@ def _build_text_snapshot(symbol: str, market_data: dict, agent_outputs: dict | N
 
 
 def _embed(text_input: str) -> list[float] | None:
-    """Call OpenRouter embeddings endpoint."""
-    if not settings.openrouter_api_key:
+    """Call embedding API (Jina AI by default, or OpenAI directly)."""
+    if not settings.embedding_api_key:
         return None
     try:
         response = httpx.post(
-            f"{settings.openrouter_base_url}/embeddings",
-            json={"model": settings.openrouter_embedding_model, "input": text_input},
+            f"{settings.embedding_base_url.rstrip('/')}/embeddings",
+            json={"model": settings.embedding_model, "input": [text_input]},
             headers={
-                "Authorization": f"Bearer {settings.openrouter_api_key}",
+                "Authorization": f"Bearer {settings.embedding_api_key}",
                 "Content-Type": "application/json",
             },
             timeout=30,

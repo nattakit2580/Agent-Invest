@@ -56,6 +56,20 @@ services:
       - MONITOR_ECONOMIC_INDICATORS=${MONITOR_ECONOMIC_INDICATORS:-FOMC,CPI,PCE,NFP,GDP,PMI,Initial Jobless Claims,Unemployment Rate,Retail Sales,Core Inflation,ECB,BoJ,OPEC}
       - MONITOR_RSS_SOURCES=${MONITOR_RSS_SOURCES:-https://feeds.finance.yahoo.com/rss/2.0/headline,https://www.investing.com/rss/news.rss,https://cointelegraph.com/rss,https://coindesk.com/arc/outboundfeeds/rss/}
       - MONITOR_IPO_WATCHLIST_PATH=/app/data/ipo_watchlist.json
+      - RAG_ENABLED=${RAG_ENABLED:-true}
+      - RAG_TOP_K=${RAG_TOP_K:-5}
+      - RAG_MIN_SCORE=${RAG_MIN_SCORE:-0.0}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-https://api.jina.ai/v1}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-jina-embeddings-v2-base-en}
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-768}
+      - AUTO_ANALYZE_ENABLED=${AUTO_ANALYZE_ENABLED:-false}
+      - AUTO_ANALYZE_SYMBOLS=${AUTO_ANALYZE_SYMBOLS:-AAPL,MSFT,NVDA,TSLA,SPY,QQQ,BTC-USD,ETH-USD}
+      - AUTO_ANALYZE_TIMEFRAME=${AUTO_ANALYZE_TIMEFRAME:-1w}
+      - AUTO_ANALYZE_INTERVAL_HOURS=${AUTO_ANALYZE_INTERVAL_HOURS:-24}
+      - USE_LOCAL_MODEL=${USE_LOCAL_MODEL:-false}
+      - LOCAL_MODEL_URL=${LOCAL_MODEL_URL:-http://localhost:11434/v1}
+      - LOCAL_MODEL_NAME=${LOCAL_MODEL_NAME:-agent-invest-7b}
     depends_on:
       postgres:
         condition: service_healthy

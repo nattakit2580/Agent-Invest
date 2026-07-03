@@ -21,7 +21,8 @@ def _utcnow():
     return datetime.now(timezone.utc)
 
 
-EMBEDDING_DIM = 1536   # openai/text-embedding-3-small
+import os
+EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "768"))  # Jina=768, OpenAI=1536
 
 
 class PredictionEmbedding(Base):
