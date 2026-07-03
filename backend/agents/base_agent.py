@@ -8,6 +8,12 @@ settings = get_settings()
 class BaseAgent:
     name: str = "base"
 
+    def _get_model(self) -> str:
+        """Return per-agent model override if set, else global openrouter_model."""
+        key = f"{self.name}_agent_model"
+        override = getattr(settings, key, "") or ""
+        return override.strip() or settings.openrouter_model
+
     def _call_llm(self, system: str, user: str, max_tokens: int = 1024) -> str:
         if settings.use_local_model:
             # Phase 5: route to local fine-tuned model (ollama/vllm, OpenAI-compatible)
@@ -24,7 +30,7 @@ class BaseAgent:
         else:
             url = f"{settings.openrouter_base_url}/chat/completions"
             payload = {
-                "model": settings.openrouter_model,
+                "model": self._get_model(),
                 "max_tokens": max_tokens,
                 "messages": [
                     {"role": "system", "content": system},

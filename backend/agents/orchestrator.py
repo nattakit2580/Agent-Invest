@@ -134,7 +134,9 @@ Return this exact JSON:
 }}"""
 
         try:
-            synth = BaseAgent()._parse_json(BaseAgent()._call_llm(system, user, max_tokens=1500))
+            _synth_agent = BaseAgent()
+            _synth_agent.name = "synthesis"
+            synth = _synth_agent._parse_json(_synth_agent._call_llm(system, user, max_tokens=1500))
         except Exception:
             synth = {
                 "reasoning": f"จากการวิเคราะห์หลายมิติ {symbol} แสดงสัญญาณ{direction} ด้วยความเชื่อมั่น {confidence:.0%} สำหรับกรอบเวลา {timeframe}",

@@ -47,6 +47,15 @@ class Settings(BaseSettings):
     monitor_report_max_news_items: int = 30
     monitor_report_max_watchlist_assets: int = 20
 
+    # Per-agent model overrides (ถ้าว่าง = ใช้ openrouter_model)
+    # Tier แนะนำ: news/sentiment=fast, fundamental/technical=medium, synthesis/critic=best
+    news_agent_model: str = ""
+    sentiment_agent_model: str = ""
+    fundamental_agent_model: str = ""
+    technical_agent_model: str = ""
+    synthesis_agent_model: str = ""
+    critic_agent_model: str = ""
+
     # RAG settings
     rag_enabled: bool = True
     rag_top_k: int = 5
