@@ -232,7 +232,7 @@ def _generate_ai_brief(
     settings = get_settings()
     economic_indicators = economic_indicators or []
     effective_use_ai = settings.telegram_use_ai_summary if use_ai is None else use_ai
-    if not effective_use_ai or not settings.anthropic_api_key:
+    if not effective_use_ai or not settings.openrouter_api_key:
         return _fallback_brief(categories, watchlist)
 
     compact_categories = {

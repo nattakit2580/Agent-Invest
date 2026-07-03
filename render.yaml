@@ -25,7 +25,7 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false
       - key: OPENROUTER_MODEL
-        value: anthropic/claude-sonnet-4-6
+        value: deepseek/deepseek-v4-flash
       - key: OPENROUTER_EMBEDDING_MODEL
         value: openai/text-embedding-3-small
       # --- frontend / CORS ---

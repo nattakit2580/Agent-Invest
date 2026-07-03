@@ -4,7 +4,7 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     openrouter_api_key: str = ""
-    openrouter_model: str = "anthropic/claude-sonnet-4-6"
+    openrouter_model: str = "deepseek/deepseek-v4-flash"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     database_url: str = "postgresql://agent:secret@localhost:5432/agent_invest"
     news_api_key: str = ""
