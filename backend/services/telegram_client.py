@@ -176,9 +176,9 @@ def broadcast_parallel(
     extra_targets: list[tuple[str, str]] | None = None,
 ) -> dict[str, str]:
     """
-    ส่งข้อความพร้อมกันจากทุกบอทที่ configure ไว้ + extra_targets เพิ่มเติม
+    Fire-and-forget: ส่งจาก bot1 (+ extra_targets ถ้ามี) พร้อมกัน ไม่ log DB
 
-    extra_targets: list of (bot_token, chat_id) tuples สำหรับ targets นอกเหนือจาก config
+    bot2 ไม่รวมอัตโนมัติ — จัดการแยกผ่าน _log_and_send_bot2 ในฝั่งที่ต้องการ log
 
     Returns dict: {label: "ok" | error_message}
     """
@@ -189,11 +189,8 @@ def broadcast_parallel(
     if settings.telegram_bot_token and settings.telegram_channel_id:
         targets.append(("bot1", settings.telegram_bot_token, settings.telegram_channel_id))
 
-    if settings.telegram_bot2_token and settings.telegram_bot2_channel_id:
-        targets.append(("bot2", settings.telegram_bot2_token, settings.telegram_bot2_channel_id))
-
-    for i, (token, chat_id) in enumerate(extra_targets or [], start=3):
-        targets.append((f"bot{i}", token, chat_id))
+    for i, (token, chat_id) in enumerate(extra_targets or [], start=2):
+        targets.append((f"extra{i}", token, chat_id))
 
     if not targets:
         return {}

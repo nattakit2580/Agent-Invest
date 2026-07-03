@@ -4,12 +4,12 @@ from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models.prediction import Prediction
+from models.prediction import MonitorReport, Prediction
 from models.evaluation import EvaluationResult
 from fetchers.market_fetcher import fetch_actual_price, fetch_market_data
 from fetchers.news_fetcher import fetch_all_news
 from services.monitor_report import build_daily_monitor_report, render_public_monitor_message
-from services.telegram_client import broadcast_parallel
+from services.telegram_client import TelegramClient, TelegramSendError, broadcast_parallel
 from utils.accuracy import calc_direction_from_prices, calc_accuracy_score, build_evaluation
 from config import get_settings
 
@@ -130,6 +130,43 @@ def _telegram_reporting_enabled() -> bool:
     ])
 
 
+def _log_and_send_bot2(report: dict, message: str, db: Session) -> None:
+    """Bot 2 — ส่งพร้อม log ลง DB (MonitorReport)."""
+    if not settings.telegram_bot2_token or not settings.telegram_bot2_channel_id:
+        return
+
+    client = TelegramClient(
+        bot_token=settings.telegram_bot2_token,
+        channel_id=settings.telegram_bot2_channel_id,
+    )
+    row = MonitorReport(
+        report_date=report["report_date"],
+        report_type="bot2_monitor",
+        channel_id=settings.telegram_bot2_channel_id,
+        title=report["title"],
+        categories=report["categories"],
+        watchlist=report["watchlist"],
+        ipo_agenda=report["ipo_agenda"],
+        message=message,
+        status="pending",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    try:
+        client.send_message(message)
+        row.status = "sent"
+        row.sent_at = datetime.now(timezone.utc)
+        row.error = None
+    except (TelegramSendError, Exception) as e:
+        row.status = "failed"
+        row.error = str(e)
+        print(f"[Scheduler] bot2 send error: {e}")
+    finally:
+        db.commit()
+
+
 def send_daily_telegram_monitor():
     if not _telegram_reporting_enabled():
         return
@@ -137,15 +174,24 @@ def send_daily_telegram_monitor():
         print("[Scheduler] telegram monitor skipped: TELEGRAM_BOT_TOKEN is not configured")
         return
 
+    db: Session = SessionLocal()
     try:
         report = build_daily_monitor_report()
         message = report["message"]
-        results = broadcast_parallel(message)
+
+        # Bot 1 — fire-and-forget (ไม่ log DB)
+        results = broadcast_parallel(message, extra_targets=[])
         for label, status in results.items():
             icon = "✓" if status == "ok" else "✗"
-            print(f"[Scheduler] {icon} {label}: {status}")
+            print(f"[Scheduler] {icon} {label} (fire-and-forget): {status}")
+
+        # Bot 2 — log ลง DB
+        _log_and_send_bot2(report, message, db)
+
     except Exception as e:
         print(f"[Scheduler] telegram monitor error: {e}")
+    finally:
+        db.close()
 
 
 def create_scheduler() -> BackgroundScheduler:
