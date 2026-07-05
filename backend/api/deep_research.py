@@ -13,6 +13,7 @@ from agents.deep_research_agent import DeepResearchAgent
 from agents.orchestrator import Orchestrator
 from services.agent_feedback import get_agent_feedback
 from services.knowledge_rag import count_documents
+from services.kg_rag import get_graph_context, seed_watchlist, get_graph_stats
 from services import rag as rag_service
 
 router = APIRouter(prefix="/api", tags=["deep-research"])
@@ -51,10 +52,15 @@ def deep_research(req: DeepResearchRequest, db: Session = Depends(get_db)):
     )
 
     # ── Standard ensemble ─────────────────────────────────────────────────
-    # Inject research context into market_data so FundamentalAgent can use it
+    # Inject research + graph context into market_data for FundamentalAgent
     from services.knowledge_rag import get_research_context
     research_ctx = get_research_context(symbol, db, k=5)
-    market_data_enriched = {**market_data, "research_context": research_ctx}
+    graph_ctx = get_graph_context(symbol, db, depth=2)
+    market_data_enriched = {
+        **market_data,
+        "research_context": research_ctx,
+        "graph_context": graph_ctx,
+    }
 
     orchestrator = Orchestrator()
     agent_outputs = orchestrator.run_all_agents(symbol, market_data_enriched, news)
@@ -88,7 +94,24 @@ def deep_research(req: DeepResearchRequest, db: Session = Depends(get_db)):
 @router.get("/deep-research/knowledge/stats")
 def knowledge_stats(db: Session = Depends(get_db)):
     """Return document counts per source in the knowledge DB."""
-    return {"counts": count_documents(db)}
+    return {
+        "knowledge_docs": count_documents(db),
+        "knowledge_graph": get_graph_stats(db),
+    }
+
+
+@router.post("/deep-research/knowledge/seed-graph")
+def seed_graph(db: Session = Depends(get_db)):
+    """Seed the entity graph with known relationships for default watchlist symbols."""
+    count = seed_watchlist(db)
+    return {"seeded_relationships": count, "graph": get_graph_stats(db)}
+
+
+@router.get("/deep-research/knowledge/graph/{symbol}")
+def get_entity_graph(symbol: str, db: Session = Depends(get_db)):
+    """Return the entity graph context for a symbol (as prompt text)."""
+    ctx = get_graph_context(symbol.upper(), db, depth=2)
+    return {"symbol": symbol.upper(), "context": ctx or "(no graph data — call /seed-graph first)"}
 
 
 @router.delete("/deep-research/knowledge/{source_id}")
