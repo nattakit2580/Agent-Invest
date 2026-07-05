@@ -36,4 +36,5 @@ def init_db():
     )
     from models.evaluation import EvaluationResult  # noqa
     from models.embedding import PredictionEmbedding  # noqa
+    from models.knowledge import KnowledgeDocument, KnowledgeEmbedding  # noqa
     Base.metadata.create_all(bind=engine)

@@ -25,11 +25,15 @@ class FundamentalAgent(BaseAgent):
             "52w_low": market_data.get("low_52w"),
         }
 
+        research_section = ""
+        research_context = market_data.get("research_context", "")
+        if research_context:
+            research_section = f"\n\nRESEARCH CONTEXT (from papers & SEC filings):\n{research_context}\n"
+
         user = f"""Perform fundamental analysis for {symbol}.
 
 FUNDAMENTAL METRICS:
-{chr(10).join(f'- {k}: {v}' for k, v in metrics.items() if v is not None)}
-
+{chr(10).join(f'- {k}: {v}' for k, v in metrics.items() if v is not None)}{research_section}
 Return this exact JSON structure:
 {{
   "direction": "bullish" | "bearish" | "neutral",
