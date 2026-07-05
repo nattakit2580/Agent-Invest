@@ -13,11 +13,17 @@ const TIMEFRAMES = [
 
 const QUICK_SYMBOLS = ["AAPL", "TSLA", "NVDA", "BTC-USD", "ETH-USD", "PTT.BK", "AOT.BK"];
 
+type ApiError = {
+  response?: { data?: { detail?: string } };
+  message?: string;
+};
+
 function AgentCard({ name, output }: { name: string; output: Record<string, unknown> }) {
-  const dir = output.direction as string;
-  const conf = output.confidence as number;
-  const summary = output.summary as string;
-  const keyPoints = (output.key_points as string[]) || [];
+  const isCritic = name === "_critic";
+  const dir = (isCritic ? output.revised_direction : output.direction) as string || "neutral";
+  const conf = typeof output.confidence === "number" ? output.confidence as number : 0;
+  const summary = (isCritic ? output.critique : output.summary) as string || "";
+  const keyPoints = ((isCritic ? output.counter_points : output.key_points) as string[]) || [];
 
   const borderColor = dir === "bullish" ? "border-emerald-700" : dir === "bearish" ? "border-red-700" : "border-slate-600";
   const labelColor = dir === "bullish" ? "text-emerald-400" : dir === "bearish" ? "text-red-400" : "text-slate-400";
@@ -27,24 +33,27 @@ function AgentCard({ name, output }: { name: string; output: Record<string, unkn
     fundamental: "Fundamental Agent",
     technical: "Technical Agent",
     sentiment: "Sentiment Agent",
+    _critic: "Risk Critic",
   };
 
   return (
     <div className={`bg-slate-800 border rounded-xl p-5 ${borderColor}`}>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-3">
         <span className="text-white font-semibold text-sm">{agentNames[name] ?? name}</span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <span className={`text-xs font-medium ${labelColor}`}>{dir}</span>
-          <span className="text-slate-500 text-xs">{(conf * 100).toFixed(0)}%</span>
+          {!isCritic && <span className="text-slate-500 text-xs">{(conf * 100).toFixed(0)}%</span>}
         </div>
       </div>
-      <div className="w-full bg-slate-700 rounded-full h-1 mb-3">
-        <div
-          className={`h-1 rounded-full ${dir === "bullish" ? "bg-emerald-500" : dir === "bearish" ? "bg-red-500" : "bg-slate-500"}`}
-          style={{ width: `${conf * 100}%` }}
-        />
-      </div>
-      <p className="text-slate-300 text-xs leading-relaxed mb-2">{summary}</p>
+      {!isCritic && (
+        <div className="w-full bg-slate-700 rounded-full h-1 mb-3">
+          <div
+            className={`h-1 rounded-full ${dir === "bullish" ? "bg-emerald-500" : dir === "bearish" ? "bg-red-500" : "bg-slate-500"}`}
+            style={{ width: `${Math.max(0, Math.min(conf, 1)) * 100}%` }}
+          />
+        </div>
+      )}
+      {summary && <p className="text-slate-300 text-xs leading-relaxed mb-2">{summary}</p>}
       <ul className="space-y-1">
         {keyPoints.slice(0, 3).map((pt, i) => (
           <li key={i} className="text-slate-500 text-xs flex items-start gap-1">
@@ -73,7 +82,8 @@ export default function AnalyzePage() {
       const data = await analyzeSymbol(symbol.trim().toUpperCase(), timeframe);
       setResult(data);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "วิเคราะห์ไม่สำเร็จ";
+      const apiError = err as ApiError;
+      const message = apiError.response?.data?.detail || apiError.message || "วิเคราะห์ไม่สำเร็จ";
       setError(message);
     } finally {
       setLoading(false);
@@ -90,7 +100,7 @@ export default function AnalyzePage() {
           <Brain className="w-8 h-8 text-sky-400" />
           วิเคราะห์การลงทุน
         </h1>
-        <p className="text-slate-400 mt-1">ป้อน symbol เพื่อให้ Multi-Agent AI วิเคราะห์</p>
+        <p className="text-slate-400 mt-1">ป้อน symbol เพื่อให้ Multi-Agent AI วิเคราะห์ด้วยโมเดล DeepSeek</p>
       </div>
 
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-5">
@@ -118,7 +128,7 @@ export default function AnalyzePage() {
 
         <div>
           <label className="block text-sm text-slate-400 mb-2">ระยะเวลาการคาดการณ์</label>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {TIMEFRAMES.map((tf) => (
               <button
                 key={tf.value}
@@ -168,9 +178,9 @@ export default function AnalyzePage() {
             result.direction === "bearish" ? "bg-red-900/20 border-red-600" :
             "bg-slate-800 border-slate-600"
           }`}>
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
               <div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className={`${result.direction === "bullish" ? "text-emerald-400" : result.direction === "bearish" ? "text-red-400" : "text-slate-400"}`}>
                     {directionIcon(result.direction)}
                   </span>
@@ -182,7 +192,7 @@ export default function AnalyzePage() {
                 </div>
                 <p className="text-slate-300 mt-3 leading-relaxed text-sm">{result.reasoning}</p>
               </div>
-              <div className="text-right ml-6 flex-shrink-0">
+              <div className="text-left md:text-right shrink-0">
                 <div className="text-slate-400 text-xs">Confidence</div>
                 <div className="text-3xl font-bold text-white">{(result.confidence * 100).toFixed(0)}%</div>
                 <div className="text-slate-400 text-xs mt-2">Entry</div>
@@ -207,7 +217,7 @@ export default function AnalyzePage() {
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => router.push("/predictions")}
               className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-lg text-sm font-medium transition-colors"

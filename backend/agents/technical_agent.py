@@ -7,7 +7,7 @@ class TechnicalAgent(BaseAgent):
     def analyze(self, symbol: str, market_data: dict, news: list[dict]) -> dict:
         system = (
             "You are a technical analysis expert. Analyze chart indicators and return ONLY valid JSON. "
-            "No markdown, no explanation outside JSON."
+            "No markdown, no explanation outside JSON. Write all text fields (summary, key_points) in Thai language. Keep JSON keys, direction/trend/signal enum values, and numbers in English."
         )
 
         indicators = {

@@ -8,6 +8,7 @@ from fetchers.news_fetcher import fetch_all_news
 from agents.orchestrator import Orchestrator
 from services import rag as rag_service
 from services.agent_feedback import get_agent_feedback
+from config import get_settings
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 orchestrator = Orchestrator()
@@ -15,6 +16,12 @@ orchestrator = Orchestrator()
 
 @router.post("", response_model=PredictionResponse)
 def analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
+    settings = get_settings()
+    if not settings.use_local_model and not settings.openrouter_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="OPENROUTER_API_KEY is not configured. Set it in backend/.env or enable USE_LOCAL_MODEL.",
+        )
     try:
         market_data = fetch_market_data(req.symbol.upper())
     except Exception as e:

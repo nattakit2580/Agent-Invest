@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Index
+from sqlalchemy import Column, String, DateTime, Text, ForeignKey, text
 from datetime import datetime, timezone
 import uuid
 
@@ -21,7 +21,9 @@ def _utcnow():
     return datetime.now(timezone.utc)
 
 
-EMBEDDING_DIM = 1536   # openai/text-embedding-3-small
+from config import get_settings
+
+EMBEDDING_DIM = get_settings().embedding_dim
 
 
 class PredictionEmbedding(Base):
@@ -46,12 +48,10 @@ def init_vector_index(engine):
     if not PGVECTOR_AVAILABLE:
         return
     with engine.connect() as conn:
-        conn.execute(
-            "CREATE EXTENSION IF NOT EXISTS vector"
-        )
-        conn.execute(
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_pred_emb_vector "
             "ON prediction_embeddings USING ivfflat (embedding vector_cosine_ops) "
             "WITH (lists = 100)"
-        )
+        ))
         conn.commit()

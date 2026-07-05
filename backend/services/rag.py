@@ -31,15 +31,15 @@ def _build_text_snapshot(symbol: str, market_data: dict, agent_outputs: dict | N
 
 
 def _embed(text_input: str) -> list[float] | None:
-    """Call OpenRouter embeddings endpoint."""
-    if not settings.openrouter_api_key:
+    """Call the configured embeddings provider."""
+    if not settings.embedding_api_key:
         return None
     try:
         response = httpx.post(
-            f"{settings.openrouter_base_url}/embeddings",
-            json={"model": settings.openrouter_embedding_model, "input": text_input},
+            f"{settings.embedding_base_url.rstrip('/')}/embeddings",
+            json={"model": settings.embedding_model, "input": [text_input]},
             headers={
-                "Authorization": f"Bearer {settings.openrouter_api_key}",
+                "Authorization": f"Bearer {settings.embedding_api_key}",
                 "Content-Type": "application/json",
             },
             timeout=30,
@@ -65,14 +65,19 @@ def index_prediction(prediction: Prediction, market_data: dict, db: Session) -> 
         prediction.symbol, market_data, prediction.agent_outputs
     )
     embedding = _embed(text_snapshot)
+    if embedding is None:
+        return
 
-    db.add(PredictionEmbedding(
-        prediction_id=prediction.id,
-        embedding=embedding,
-        text_snapshot=text_snapshot,
-    ))
-    db.commit()
-
+    try:
+        db.add(PredictionEmbedding(
+            prediction_id=prediction.id,
+            embedding=embedding,
+            text_snapshot=text_snapshot,
+        ))
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        print(f"[RAG] index skipped: {exc}")
 
 def get_similar_cases(
     symbol: str,
@@ -110,11 +115,15 @@ def get_similar_cases(
         LIMIT :k
     """)
 
-    rows = db.execute(sql, {
-        "embedding": embedding_str,
-        "min_score": settings.rag_min_score,
-        "k": top_k,
-    }).fetchall()
+    try:
+        rows = db.execute(sql, {
+            "embedding": embedding_str,
+            "min_score": settings.rag_min_score,
+            "k": top_k,
+        }).fetchall()
+    except Exception as exc:
+        print(f"[RAG] search skipped: {exc}")
+        return []
 
     cases = []
     for row in rows:

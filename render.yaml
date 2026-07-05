@@ -1,10 +1,11 @@
-# Render Blueprint for the Agent Invest backend (FastAPI + PostgreSQL/pgvector).
-# Deploy: push to GitHub, then Render -> New -> Blueprint -> pick this repo.
-# Secrets (sync:false) are entered in the Render dashboard, not committed here.
+# Render Blueprint for Agent Invest MVP.
+# Deploy: push to GitHub, then Render -> New -> Blueprint -> select this repo.
+# Required secret: OPENROUTER_API_KEY on agent-invest-backend.
+
 databases:
   - name: agent-invest-db
-    plan: free                 # free Postgres (expires after 90 days; upgrade to keep data)
-    postgresMajorVersion: "16" # supports the pgvector extension (created automatically on boot)
+    plan: free
+    postgresMajorVersion: "16"
 
 services:
   - type: web
@@ -16,29 +17,36 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
-      # --- database (wired automatically from the managed Postgres above) ---
       - key: DATABASE_URL
         fromDatabase:
           name: agent-invest-db
           property: connectionString
-      # --- LLM via OpenRouter (required) ---
       - key: OPENROUTER_API_KEY
         sync: false
       - key: OPENROUTER_MODEL
         value: deepseek/deepseek-v4-flash
-      - key: OPENROUTER_EMBEDDING_MODEL
-        value: openai/text-embedding-3-small
-      # --- frontend / CORS ---
-      - key: FRONTEND_URL           # your Cloudflare Workers URL
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: RAG_ENABLED
+        value: "false"
+      - key: EMBEDDING_API_KEY
         sync: false
+      - key: EMBEDDING_BASE_URL
+        value: https://api.jina.ai/v1
+      - key: EMBEDDING_MODEL
+        value: jina-embeddings-v2-base-en
+      - key: EMBEDDING_DIM
+        value: "768"
+      - key: FRONTEND_URL
+        value: https://agent-invest-frontend.onrender.com
+      - key: CORS_ALLOW_ORIGINS
+        value: https://agent-invest-frontend.onrender.com
       - key: CORS_ALLOW_ORIGIN_REGEX
-        value: https://.*\.(workers|pages)\.dev
-      # --- data sources (optional but recommended) ---
-      - key: FRED_API_KEY
-        sync: false
+        value: https://.*\.(workers|pages)\.dev|https://.*\.onrender\.com
       - key: NEWS_API_KEY
         sync: false
-      # --- Telegram (optional; leave blank to disable) ---
+      - key: FRED_API_KEY
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHANNEL_ID
@@ -47,3 +55,19 @@ services:
         sync: false
       - key: TELEGRAM_TIMEZONE
         value: Asia/Bangkok
+
+  - type: web
+    name: agent-invest-frontend
+    runtime: node
+    rootDir: frontend
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start -- -H 0.0.0.0 -p $PORT
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20.19.0"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: BACKEND_URL
+        value: https://agent-invest-backend.onrender.com

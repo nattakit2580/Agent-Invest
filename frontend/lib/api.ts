@@ -1,10 +1,7 @@
-﻿import axios from "axios";
+import axios from "axios";
 
-// เนเธเน /api เธเธถเนเธ Next.js เธเธฐ proxy เนเธเธซเธฒ backend เนเธ”เธขเธญเธฑเธ•เนเธเธกเธฑเธ•เธด
-// เธงเธดเธเธตเธเธตเนเธ—เธณเนเธซเนเนเธเน Cloudflare Tunnel เนเธ”เนเนเธ”เธขเนเธกเนเธ•เนเธญเธ expose backend port
-// Dev: unset -> uses "/api" which next.config.js rewrites() proxies to BACKEND_URL.
-// Prod (Cloudflare Workers): set NEXT_PUBLIC_API_URL to the deployed backend base URL
-// (browser calls it directly; backend CORS must allow this frontend's origin).
+// Dev and Render frontend use /api, which Next.js rewrites to BACKEND_URL.
+// Cloudflare/static deployments can set NEXT_PUBLIC_API_URL to call the backend directly.
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "/api",
 });

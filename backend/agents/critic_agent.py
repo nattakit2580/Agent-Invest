@@ -29,7 +29,7 @@ class CriticAgent(BaseAgent):
             "You are a critical risk analyst reviewing an investment prediction. "
             "Your job is to find weaknesses and challenge overconfident calls. "
             "Be skeptical but fair — if the case is genuinely strong, say so. "
-            "Return ONLY valid JSON. No markdown."
+            "Return ONLY valid JSON. No markdown. Write all text fields (critique, counter_points) in Thai language. Keep JSON keys, agrees_with_direction (true/false), revised_direction enum, and numbers in English."
         )
 
         user = f"""Review this investment prediction for {symbol}:
@@ -62,7 +62,7 @@ Return this exact JSON:
 }}"""
 
         try:
-            result = self._parse_json(self._call_llm(system, user, max_tokens=500))
+            result = self._parse_json(self._call_llm(system, user, max_tokens=800))
             result.setdefault("agrees_with_direction", True)
             result.setdefault("confidence_adjustment", 0.0)
             result.setdefault("critique", "")
@@ -75,7 +75,7 @@ Return this exact JSON:
             return {
                 "agrees_with_direction": True,
                 "confidence_adjustment": 0.0,
-                "critique": f"Critic unavailable: {e}",
+                "critique": f"ไม่สามารถวิเคราะห์ความเสี่ยงเพิ่มเติมได้: {e}",
                 "counter_points": [],
                 "revised_direction": direction,
             }

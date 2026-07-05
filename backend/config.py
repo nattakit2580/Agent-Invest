@@ -1,4 +1,4 @@
-﻿from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings
 from functools import lru_cache
 
 
@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     monitor_report_max_news_items: int = 30
     monitor_report_max_watchlist_assets: int = 20
 
+    # Per-agent model overrides. Blank means use openrouter_model.
+    news_agent_model: str = ""
+    sentiment_agent_model: str = ""
+    fundamental_agent_model: str = ""
+    technical_agent_model: str = ""
+    synthesis_agent_model: str = ""
+    critic_agent_model: str = ""
+
     # Economic indicators (FRED). Register a free key at https://fredaccount.stlouisfed.org/apikeys
     fred_api_key: str = ""
     # Format: "Label=SERIES_ID,Label=SERIES_ID". 15 core US macro series.
@@ -73,6 +81,13 @@ class Settings(BaseSettings):
     rag_enabled: bool = True
     rag_top_k: int = 5
     rag_min_score: float = 0.0
+    # Embeddings use a separate provider because OpenRouter does not expose
+    # a compatible /embeddings endpoint for this flow.
+    embedding_api_key: str = ""
+    embedding_base_url: str = "https://api.jina.ai/v1"
+    embedding_model: str = "jina-embeddings-v2-base-en"
+    embedding_dim: int = 768
+    # Backward-compatible name. Kept so older env files do not break settings.
     openrouter_embedding_model: str = "openai/text-embedding-3-small"
 
     # Dataset collection (Phase 4)

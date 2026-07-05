@@ -31,7 +31,7 @@ Stack:
 - APScheduler
 - yfinance
 - feedparser
-- Anthropic API integration
+- OpenRouter integration with DeepSeek as the default model
 
 Local API docs:
 
@@ -181,7 +181,9 @@ backend/.env
 Important values:
 
 ```env
-ANTHROPIC_API_KEY=
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=deepseek/deepseek-v4-flash
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 DATABASE_URL=sqlite:///./agent_invest.db
 NEWS_API_KEY=
 FRONTEND_URL=http://localhost:3000
