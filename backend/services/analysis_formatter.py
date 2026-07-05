@@ -45,6 +45,9 @@ def format_analysis(symbol: str, result: dict, timeframe: str = "1w") -> str:
         lines.append(f"{ag_icon} {name.capitalize()}: {ag_d} ({ag_c:.0%})")
         if summary:
             lines.append(f"   {summary}")
+        trace = out.get("reasoning_trace", "")
+        if trace:
+            lines.append(f"   💭 {trace}")
         for pt in key_pts[:3]:
             lines.append(f"   • {pt}")
 

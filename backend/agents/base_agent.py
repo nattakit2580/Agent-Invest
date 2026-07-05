@@ -49,11 +49,20 @@ class BaseAgent:
         return response.json()["choices"][0]["message"]["content"]
 
     def _parse_json(self, text: str) -> dict:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start == -1 or end == 0:
+        # Walk backwards from the last } to find the matching { — handles
+        # ReAct preamble text that may contain stray { } characters.
+        end = text.rfind("}")
+        if end == -1:
             raise ValueError("No JSON found in response")
-        return json.loads(text[start:end])
+        depth = 0
+        for i in range(end, -1, -1):
+            if text[i] == "}":
+                depth += 1
+            elif text[i] == "{":
+                depth -= 1
+                if depth == 0:
+                    return json.loads(text[i : end + 1])
+        raise ValueError("No complete JSON object found in response")
 
     def analyze(self, symbol: str, market_data: dict, news: list[dict]) -> dict:
         raise NotImplementedError

@@ -89,13 +89,14 @@ class Orchestrator:
             target_price = round(current_price * (1 - confidence * 0.1), 4)
 
         summaries = "\n".join(
-            f"[{name.upper()}] ({data.get('direction','?')} / conf:{data.get('confidence',0):.2f}): {data.get('summary','')}"
+            f"[{name.upper()}] ({data.get('direction','?')} / conf:{data.get('confidence',0):.2f}): "
+            f"{data.get('summary','')} | trace: {data.get('reasoning_trace','')}"
             for name, data in agent_outputs.items()
-            if name != "_critic"
+            if not name.startswith("_")
         )
         all_key_points = []
         for name, data in agent_outputs.items():
-            if name != "_critic":
+            if not name.startswith("_"):
                 all_key_points.extend(data.get("key_points", [])[:2])
 
         system = (
