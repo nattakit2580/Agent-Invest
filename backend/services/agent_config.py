@@ -33,23 +33,21 @@ AGENT_LABELS = {
 # any other OpenRouter model id in the custom field, so this is just a shortlist.
 # Models whose OpenRouter id ends in ":free" cost nothing (rate-limited free tier).
 MODEL_CATALOG = [
-    # --- Free tier (no cost, rate-limited) ---
-    {"id": "deepseek/deepseek-chat-v3-0324:free", "label": "DeepSeek V3 (free)", "tier": "balanced", "free": True},
-    {"id": "deepseek/deepseek-r1:free", "label": "DeepSeek R1 · reasoning (free)", "tier": "strong", "free": True},
+    # --- Free tier (no cost, rate-limited). IDs verified against OpenRouter. ---
     {"id": "meta-llama/llama-3.3-70b-instruct:free", "label": "Llama 3.3 70B (free)", "tier": "balanced", "free": True},
-    {"id": "google/gemini-2.0-flash-exp:free", "label": "Gemini 2.0 Flash (free)", "tier": "fast", "free": True},
-    {"id": "qwen/qwen-2.5-72b-instruct:free", "label": "Qwen 2.5 72B (free)", "tier": "balanced", "free": True},
-    {"id": "qwen/qwq-32b:free", "label": "QwQ 32B · reasoning (free)", "tier": "strong", "free": True},
-    {"id": "mistralai/mistral-small-3.1-24b-instruct:free", "label": "Mistral Small 3.1 24B (free)", "tier": "fast", "free": True},
-    {"id": "nvidia/llama-3.1-nemotron-70b-instruct:free", "label": "Nemotron 70B (free)", "tier": "balanced", "free": True},
-    {"id": "google/gemma-3-27b-it:free", "label": "Gemma 3 27B (free)", "tier": "fast", "free": True},
-    # --- Paid tier (needs OpenRouter credit) ---
+    {"id": "openai/gpt-oss-120b:free", "label": "GPT-OSS 120B (free)", "tier": "strong", "free": True},
+    {"id": "openai/gpt-oss-20b:free", "label": "GPT-OSS 20B (free)", "tier": "fast", "free": True},
+    {"id": "qwen/qwen3-next-80b-a3b-instruct:free", "label": "Qwen3 Next 80B (free)", "tier": "balanced", "free": True},
+    {"id": "nvidia/nemotron-3-super-120b-a12b:free", "label": "Nemotron 3 Super 120B (free)", "tier": "strong", "free": True},
+    {"id": "google/gemma-4-31b-it:free", "label": "Gemma 4 31B (free)", "tier": "fast", "free": True},
+    {"id": "meta-llama/llama-3.2-3b-instruct:free", "label": "Llama 3.2 3B (free)", "tier": "fast", "free": True},
+    # --- Paid tier (needs OpenRouter credit). IDs verified against OpenRouter. ---
     {"id": "deepseek/deepseek-chat", "label": "DeepSeek Chat (V3)", "tier": "balanced", "free": False},
+    {"id": "deepseek/deepseek-chat-v3-0324", "label": "DeepSeek V3 0324", "tier": "balanced", "free": False},
+    {"id": "deepseek/deepseek-v4-flash", "label": "DeepSeek V4 Flash", "tier": "fast", "free": False},
     {"id": "openai/gpt-4o-mini", "label": "GPT-4o mini", "tier": "balanced", "free": False},
+    {"id": "openai/gpt-4.1-mini", "label": "GPT-4.1 mini", "tier": "balanced", "free": False},
     {"id": "openai/gpt-4o", "label": "GPT-4o", "tier": "strong", "free": False},
-    {"id": "anthropic/claude-3.5-haiku", "label": "Claude 3.5 Haiku", "tier": "fast", "free": False},
-    {"id": "anthropic/claude-3.5-sonnet", "label": "Claude 3.5 Sonnet", "tier": "strong", "free": False},
-    {"id": "google/gemini-flash-1.5", "label": "Gemini 1.5 Flash", "tier": "fast", "free": False},
     {"id": "meta-llama/llama-3.3-70b-instruct", "label": "Llama 3.3 70B", "tier": "balanced", "free": False},
     {"id": "qwen/qwen-2.5-72b-instruct", "label": "Qwen 2.5 72B", "tier": "balanced", "free": False},
     {"id": "mistralai/mistral-large", "label": "Mistral Large", "tier": "strong", "free": False},

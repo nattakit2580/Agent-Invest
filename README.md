@@ -182,7 +182,7 @@ Important values:
 
 ```env
 OPENROUTER_API_KEY=
-OPENROUTER_MODEL=deepseek/deepseek-chat-v3-0324:free
+OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 DATABASE_URL=sqlite:///./agent_invest.db
 NEWS_API_KEY=
