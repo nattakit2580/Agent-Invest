@@ -42,14 +42,14 @@ class BaseAgent:
                     {"role": "user", "content": user},
                 ],
             }
-        if temperature is not None:
-            payload["temperature"] = temperature
             headers = {
                 "Authorization": f"Bearer {settings.openrouter_api_key}",
                 "Content-Type": "application/json",
                 "HTTP-Referer": settings.frontend_url,
                 "X-Title": "Agent-Invest",
             }
+        if temperature is not None:
+            payload["temperature"] = temperature
 
         response = httpx.post(url, json=payload, headers=headers, timeout=60)
         response.raise_for_status()
