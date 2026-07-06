@@ -23,7 +23,7 @@ OPENROUTER_API_KEY=sk-or-...
 The default model is already set to:
 
 ```text
-deepseek/deepseek-v4-flash
+deepseek/deepseek-chat-v3-0324:free
 ```
 
 Optional secrets:

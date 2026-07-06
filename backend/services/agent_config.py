@@ -44,8 +44,7 @@ MODEL_CATALOG = [
     {"id": "nvidia/llama-3.1-nemotron-70b-instruct:free", "label": "Nemotron 70B (free)", "tier": "balanced", "free": True},
     {"id": "google/gemma-3-27b-it:free", "label": "Gemma 3 27B (free)", "tier": "fast", "free": True},
     # --- Paid tier (needs OpenRouter credit) ---
-    {"id": "deepseek/deepseek-v4-flash", "label": "DeepSeek V4 Flash", "tier": "fast", "free": False},
-    {"id": "deepseek/deepseek-chat", "label": "DeepSeek Chat", "tier": "balanced", "free": False},
+    {"id": "deepseek/deepseek-chat", "label": "DeepSeek Chat (V3)", "tier": "balanced", "free": False},
     {"id": "openai/gpt-4o-mini", "label": "GPT-4o mini", "tier": "balanced", "free": False},
     {"id": "openai/gpt-4o", "label": "GPT-4o", "tier": "strong", "free": False},
     {"id": "anthropic/claude-3.5-haiku", "label": "Claude 3.5 Haiku", "tier": "fast", "free": False},
