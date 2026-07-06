@@ -27,6 +27,7 @@ def get_db():
 
 def init_db():
     from models.prediction import (  # noqa
+        AgentSetting,
         CalendarEvent,
         EconomicIndicator,
         MarketSnapshot,

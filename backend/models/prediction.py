@@ -142,3 +142,20 @@ class TelegramMessage(Base):
     message_date = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     raw_update = Column(JSON, nullable=True)
+
+
+class AgentSetting(Base):
+    """Runtime per-agent model overrides, editable from the admin page.
+
+    One row per agent (news/fundamental/technical/sentiment/synthesis/critic).
+    A null/blank column means "use the env/global default" for that field.
+    """
+
+    __tablename__ = "agent_settings"
+
+    agent = Column(String(30), primary_key=True)
+    model = Column(String(160), nullable=True)
+    temperature = Column(Float, nullable=True)
+    max_tokens = Column(Integer, nullable=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))

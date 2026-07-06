@@ -12,6 +12,7 @@ import {
   LineChart,
   CalendarClock,
   Sparkles,
+  SlidersHorizontal,
   Menu,
   X,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/calendar", label: "ปฏิทินเหตุการณ์", icon: CalendarClock },
   { href: "/insights", label: "ระบบเรียนรู้", icon: Sparkles },
   { href: "/export", label: "Export", icon: Download },
+  { href: "/admin", label: "Admin (โมเดล)", icon: SlidersHorizontal },
 ];
 
 export default function Sidebar() {

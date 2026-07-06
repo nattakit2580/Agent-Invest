@@ -220,3 +220,140 @@ export const getAgentAccuracyList = () =>
 
 export const getDynamicWeights = () =>
   api.get<DynamicWeights>("/accuracy/weights").then((r) => r.data);
+
+// ---------------------------------------------------------------------------
+// Streaming analysis (NDJSON) — reveals each agent as it finishes.
+// ---------------------------------------------------------------------------
+export type AnalyzeStreamEvent =
+  | { type: "status"; stage: string; message?: string }
+  | { type: "agent"; name: string; output: Record<string, unknown> }
+  | {
+      type: "synthesis";
+      direction: string;
+      confidence: number;
+      current_price: number;
+      target_price: number | null;
+      reasoning: string;
+      key_risks: string[];
+      catalysts: string[];
+      recommendation: string;
+    }
+  | { type: "critic"; output: Record<string, unknown> }
+  | { type: "final"; prediction: Prediction }
+  | { type: "error"; detail: string };
+
+const COLD_START_STATUS = new Set([502, 503, 504]);
+
+export async function analyzeStream(
+  symbol: string,
+  timeframe: string,
+  onEvent: (ev: AnalyzeStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const base = api.defaults.baseURL || "/api";
+  const url = `${base}/analyze/stream`;
+
+  // Open the stream, retrying the initial connection through Render cold starts.
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol, timeframe }),
+        signal,
+      });
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      await new Promise((r) => setTimeout(r, 5000));
+      continue;
+    }
+    if (res.ok) break;
+    if (COLD_START_STATUS.has(res.status) && attempt < 5) {
+      await new Promise((r) => setTimeout(r, 5000));
+      res = null;
+      continue;
+    }
+    break;
+  }
+
+  if (!res || !res.ok || !res.body) {
+    onEvent({ type: "error", detail: `เชื่อมต่อไม่สำเร็จ (${res?.status ?? "network"})` });
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const flushLine = (line: string) => {
+    const t = line.trim();
+    if (!t) return;
+    try {
+      onEvent(JSON.parse(t) as AnalyzeStreamEvent);
+    } catch {
+      /* ignore partial/non-JSON lines */
+    }
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf("\n")) >= 0) {
+      flushLine(buffer.slice(0, idx));
+      buffer = buffer.slice(idx + 1);
+    }
+  }
+  flushLine(buffer);
+}
+
+// ---------------------------------------------------------------------------
+// Admin — per-agent model configuration (password verified server-side).
+// ---------------------------------------------------------------------------
+export interface ModelCatalogItem {
+  id: string;
+  label: string;
+  tier: string;
+  free?: boolean;
+}
+
+export interface AgentConfigRow {
+  agent: string;
+  label: string;
+  model: string; // "" = using default
+  resolved_model: string;
+  env_default: string;
+  temperature: number | null;
+  max_tokens: number | null;
+}
+
+export interface AdminConfig {
+  agents: AgentConfigRow[];
+  models: ModelCatalogItem[];
+  global_default: string;
+}
+
+export interface AgentConfigUpdate {
+  agent: string;
+  model?: string;
+  temperature?: number | null;
+  max_tokens?: number | null;
+}
+
+export const adminLogin = (password: string) =>
+  api.post<{ ok: boolean }>("/admin/login", { password }).then((r) => r.data);
+
+export const getAdminConfig = (password: string) =>
+  api
+    .get<AdminConfig>("/admin/config", { headers: { "X-Admin-Password": password } })
+    .then((r) => r.data);
+
+export const updateAdminConfig = (password: string, agents: AgentConfigUpdate[]) =>
+  api
+    .put<AdminConfig>(
+      "/admin/config",
+      { agents },
+      { headers: { "X-Admin-Password": password } }
+    )
+    .then((r) => r.data);

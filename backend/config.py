@@ -53,12 +53,17 @@ class Settings(BaseSettings):
     monitor_report_max_watchlist_assets: int = 20
 
     # Per-agent model overrides. Blank means use openrouter_model.
+    # These are the env-level defaults; the admin page can override them at
+    # runtime (stored in the agent_settings table, takes precedence over these).
     news_agent_model: str = ""
     sentiment_agent_model: str = ""
     fundamental_agent_model: str = ""
     technical_agent_model: str = ""
     synthesis_agent_model: str = ""
     critic_agent_model: str = ""
+
+    # Password guarding the /admin model-config page (verified server-side).
+    admin_password: str = "NiceAgent"
 
     # Economic indicators (FRED). Register a free key at https://fredaccount.stlouisfed.org/apikeys
     fred_api_key: str = ""

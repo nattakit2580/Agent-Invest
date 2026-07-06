@@ -9,11 +9,17 @@ class BaseAgent:
     name: str = "base"
 
     def _get_model(self) -> str:
-        key = f"{self.name}_agent_model"
-        override = getattr(settings, key, "") or ""
-        return override.strip() or settings.openrouter_model
+        # Runtime override (admin page) → env default → global default.
+        from services.agent_config import resolve_model
+        return resolve_model(self.name)
 
     def _call_llm(self, system: str, user: str, max_tokens: int = 1024) -> str:
+        from services.agent_config import get_override
+        override = get_override(self.name)
+        if override.get("max_tokens"):
+            max_tokens = override["max_tokens"]
+        temperature = override.get("temperature")
+
         if settings.use_local_model:
             # Phase 5: route to local fine-tuned model (ollama/vllm, OpenAI-compatible)
             url = f"{settings.local_model_url.rstrip('/')}/chat/completions"
@@ -36,6 +42,8 @@ class BaseAgent:
                     {"role": "user", "content": user},
                 ],
             }
+        if temperature is not None:
+            payload["temperature"] = temperature
             headers = {
                 "Authorization": f"Bearer {settings.openrouter_api_key}",
                 "Content-Type": "application/json",

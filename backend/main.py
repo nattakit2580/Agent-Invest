@@ -11,6 +11,7 @@ from api.economic import router as economic_router
 from api.calendar import router as calendar_router
 from api.rag import router as rag_router
 from api.dataset import router as dataset_router
+from api.admin import router as admin_router
 from tasks.scheduler import create_scheduler
 from config import get_settings
 
@@ -20,6 +21,10 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Prime the per-agent model-override cache from the DB so the first analysis
+    # doesn't pay a DB round-trip inside the agents.
+    from services.agent_config import load_overrides
+    load_overrides()
     scheduler = create_scheduler()
     scheduler.start()
     yield
@@ -54,6 +59,7 @@ app.include_router(economic_router)
 app.include_router(calendar_router)
 app.include_router(rag_router)
 app.include_router(dataset_router)
+app.include_router(admin_router)
 
 
 @app.get("/")

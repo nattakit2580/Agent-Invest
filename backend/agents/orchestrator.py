@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from agents.news_agent import NewsAgent
 from agents.fundamental_agent import FundamentalAgent
 from agents.technical_agent import TechnicalAgent
@@ -39,6 +39,26 @@ class Orchestrator:
                     }
         return results
 
+    def stream_agents(self, symbol: str, market_data: dict, news: list[dict]):
+        """Yield (name, output) for each analyst agent as it finishes (for SSE/NDJSON)."""
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {
+                executor.submit(agent.analyze, symbol, market_data, news): agent.name
+                for agent in self.agents
+            }
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    output = future.result(timeout=60)
+                except Exception as e:
+                    output = {
+                        "direction": "neutral",
+                        "confidence": 0.3,
+                        "summary": f"Agent error: {str(e)}",
+                        "key_points": [],
+                    }
+                yield name, output
+
     def _weighted_direction(
         self, agent_outputs: dict, weights: dict | None = None
     ) -> tuple[str, float]:
@@ -68,7 +88,7 @@ class Orchestrator:
 
         return direction, round(min(max(final_confidence, 0.0), 1.0), 3)
 
-    def synthesize(
+    def _synthesize_core(
         self,
         symbol: str,
         market_data: dict,
@@ -77,6 +97,8 @@ class Orchestrator:
         similar_cases: list[dict] | None = None,
         agent_feedback: dict | None = None,
     ) -> dict:
+        """Run the weighted blend + synthesis LLM. Stops before the critic pass so
+        callers can stream the synthesis and critic steps separately."""
         # use dynamic weights from track record if available
         weights = agent_feedback.get("weights") if agent_feedback else None
         direction, confidence = self._weighted_direction(agent_outputs, weights)
@@ -145,13 +167,30 @@ Return this exact JSON:
                 "recommendation": f"ติดตาม {symbol} อย่างใกล้ชิดและรอจังหวะยืนยันก่อนตัดสินใจ",
             }
 
-        # critic pass — challenge the synthesis
-        pre_critic_synthesis = {
+        return {
             "direction": direction,
             "confidence": confidence,
-            "reasoning": synth.get("reasoning", ""),
+            "current_price": current_price,
+            "target_price": target_price,
+            "timeframe": timeframe,
+            "synth": synth,
+            "weights": weights or DEFAULT_WEIGHTS,
         }
-        critic_result = self.critic.critique(symbol, pre_critic_synthesis, agent_outputs, market_data)
+
+    def run_critic(self, symbol: str, core: dict, agent_outputs: dict, market_data: dict) -> dict:
+        """Critic pass — challenge the synthesis. Returns the critic result dict."""
+        pre_critic_synthesis = {
+            "direction": core["direction"],
+            "confidence": core["confidence"],
+            "reasoning": core["synth"].get("reasoning", ""),
+        }
+        return self.critic.critique(symbol, pre_critic_synthesis, agent_outputs, market_data)
+
+    def assemble(self, core: dict, critic_result: dict, agent_outputs: dict) -> dict:
+        """Combine synthesis core + critic into the final prediction dict."""
+        direction = core["direction"]
+        confidence = core["confidence"]
+        synth = core["synth"]
 
         # apply critic's confidence adjustment and optional direction revision
         final_confidence = round(
@@ -170,17 +209,32 @@ Return this exact JSON:
         return {
             "direction": final_direction,
             "confidence": final_confidence,
-            "current_price": current_price,
-            "target_price": target_price,
-            "timeframe": timeframe,
+            "current_price": core["current_price"],
+            "target_price": core["target_price"],
+            "timeframe": core["timeframe"],
             "reasoning": synth.get("reasoning", ""),
             "key_risks": synth.get("key_risks", []),
             "catalysts": synth.get("catalysts", []),
             "recommendation": synth.get("recommendation", ""),
             "critic": critic_result,
             "agent_outputs": agent_outputs_with_critic,
-            "weights_used": weights or DEFAULT_WEIGHTS,
+            "weights_used": core["weights"],
         }
+
+    def synthesize(
+        self,
+        symbol: str,
+        market_data: dict,
+        agent_outputs: dict,
+        timeframe: str,
+        similar_cases: list[dict] | None = None,
+        agent_feedback: dict | None = None,
+    ) -> dict:
+        core = self._synthesize_core(
+            symbol, market_data, agent_outputs, timeframe, similar_cases, agent_feedback
+        )
+        critic_result = self.run_critic(symbol, core, agent_outputs, market_data)
+        return self.assemble(core, critic_result, agent_outputs)
 
     def analyze(
         self,
