@@ -99,6 +99,73 @@ class TelegramClient:
             raise TelegramSendError(f"Telegram {method} failed: {description}")
         return body
 
+    def send_message_with_keyboard(
+        self,
+        text: str,
+        *,
+        chat_id: str | None = None,
+        keyboard: list[list[dict[str, Any]]] | None = None,
+        parse_mode: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a single message with an optional inline keyboard."""
+        target = chat_id or self.channel_id
+        if not self.bot_configured or not target:
+            raise TelegramNotConfiguredError("Bot token and chat id required.")
+        payload: dict[str, Any] = {
+            "chat_id": target,
+            "text": text[:3900],
+            "disable_web_page_preview": True,
+        }
+        if keyboard:
+            payload["reply_markup"] = {"inline_keyboard": keyboard}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        return self._request("sendMessage", payload).get("result", {})
+
+    def send_photo(
+        self,
+        photo_bytes: bytes,
+        *,
+        chat_id: str | None = None,
+        caption: str | None = None,
+        keyboard: list[list[dict[str, Any]]] | None = None,
+    ) -> dict[str, Any]:
+        """Send a photo via multipart/form-data (sendPhoto)."""
+        import json as _json
+        target = chat_id or self.channel_id
+        if not self.bot_configured or not target:
+            raise TelegramNotConfiguredError("Bot token and chat id required.")
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendPhoto"
+        data: dict[str, str] = {"chat_id": str(target)}
+        if caption:
+            data["caption"] = caption[:1024]
+        if keyboard:
+            data["reply_markup"] = _json.dumps({"inline_keyboard": keyboard})
+        resp = requests.post(
+            url,
+            data=data,
+            files={"photo": ("chart.png", photo_bytes, "image/png")},
+            timeout=30,
+        )
+        try:
+            body = resp.json()
+        except ValueError:
+            body = {"description": resp.text[:500]}
+        if resp.status_code >= 400 or not body.get("ok", False):
+            raise TelegramSendError(f"sendPhoto failed: {body.get('description', '')}")
+        return body.get("result", {})
+
+    def answer_callback_query(
+        self,
+        callback_query_id: str,
+        text: str = "",
+    ) -> dict[str, Any]:
+        """Acknowledge an inline keyboard button press."""
+        return self._request("answerCallbackQuery", {
+            "callback_query_id": callback_query_id,
+            "text": text[:200],
+        })
+
     def send_message(
         self,
         text: str,
@@ -152,7 +219,7 @@ class TelegramClient:
         payload: dict[str, Any] = {
             "url": webhook_url,
             "drop_pending_updates": drop_pending_updates,
-            "allowed_updates": ["message", "edited_message", "channel_post"],
+            "allowed_updates": ["message", "edited_message", "channel_post", "callback_query"],
         }
         if secret_token:
             payload["secret_token"] = secret_token

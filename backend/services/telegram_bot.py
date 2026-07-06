@@ -2,6 +2,7 @@
 
 import re
 from collections import Counter
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -13,6 +14,14 @@ from fetchers.market_fetcher import fetch_market_data
 from models.prediction import TelegramChat, TelegramMessage, TelegramUser
 from services.monitor_report import build_daily_monitor_report, build_ipo_agenda, build_watchlist_summary
 from services.telegram_client import TelegramClient, TelegramSendError
+
+
+@dataclass
+class TelegramReply:
+    text: str | None = None
+    keyboard: list[list[dict[str, Any]]] | None = None
+    photo_bytes: bytes | None = None   # PNG — triggers sendPhoto instead of sendMessage
+    caption: str | None = None         # caption shown below photo
 
 COMMAND_RE = re.compile(r"^/([A-Za-z0-9_]+)(?:@([A-Za-z0-9_]+))?(?:\s+(.*))?$", re.DOTALL)
 URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
@@ -38,6 +47,9 @@ INTENT_TOPICS = {
     "wallet_check": "wallet",
     "daily_report": "report",
     "market_symbol": "market",
+    "analyze_symbol": "analysis",
+    "chart_symbol": "chart",
+    "portfolio": "portfolio",
     "ignored_command": "other",
     "unknown": "other",
     "non_text": "other",
@@ -129,6 +141,12 @@ def resolve_telegram_intent(text: str | None) -> dict[str, Any]:
         intent = "wallet_check"
     elif command in {"report", "summary", "daily"}:
         intent = "daily_report"
+    elif command in {"analyze", "ai", "วิเคราะห์"}:
+        intent = "analyze_symbol"
+    elif command in {"chart", "price", "กราฟ", "กราฟราคา"}:
+        intent = "chart_symbol"
+    elif command in {"portfolio", "port", "holdings", "port"}:
+        intent = "portfolio"
     elif command:
         intent = "unknown"
     elif _extract_wallet_addresses(text):
@@ -179,6 +197,139 @@ def _fmt_pct(value: Any) -> str:
     sign = "+" if numeric > 0 else ""
     return f"{sign}{numeric:.2f}%"
 
+
+# ---------------------------------------------------------------------------
+# Inline keyboard helpers
+# ---------------------------------------------------------------------------
+
+def _market_keyboard(symbol: str) -> list[list[dict[str, Any]]]:
+    return [
+        [
+            {"text": "📊 วิเคราะห์ AI", "callback_data": f"analyze:{symbol}"},
+            {"text": "📈 Chart 7d",     "callback_data": f"chart:{symbol}"},
+        ],
+        [
+            {"text": "➕ เพิ่ม Port",   "callback_data": f"port_add:{symbol}"},
+            {"text": "💼 Port ของฉัน", "callback_data": "port_view"},
+        ],
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Portfolio helpers
+# ---------------------------------------------------------------------------
+
+def _portfolio_view(telegram_user_id: str, db: Session) -> str:
+    from models.portfolio import UserPortfolio
+    holdings = (
+        db.query(UserPortfolio)
+        .filter(UserPortfolio.telegram_user_id == telegram_user_id)
+        .all()
+    )
+    if not holdings:
+        return (
+            "💼 Portfolio ของคุณว่างเปล่า\n"
+            "เพิ่มหุ้น: /portfolio add AAPL 10 180.50"
+        )
+    lines = ["💼 Portfolio ของคุณ\n"]
+    total_cost = total_value = 0.0
+    for h in holdings:
+        try:
+            data = fetch_market_data(h.symbol)
+            current = float(data.get("price") or h.buy_price)
+        except Exception:
+            current = h.buy_price
+        cost = h.quantity * h.buy_price
+        value = h.quantity * current
+        pnl = value - cost
+        pnl_pct = (pnl / cost * 100) if cost else 0
+        total_cost += cost
+        total_value += value
+        sign = "+" if pnl >= 0 else ""
+        icon = "🟢" if pnl >= 0 else "🔴"
+        lines.append(
+            f"{icon} {h.symbol}: {h.quantity:.4g} หุ้น @ ${h.buy_price:.2f}\n"
+            f"   ราคาปัจจุบัน ${current:.2f} | P&L {sign}${pnl:.2f} ({sign}{pnl_pct:.1f}%)"
+        )
+    total_pnl = total_value - total_cost
+    total_pnl_pct = (total_pnl / total_cost * 100) if total_cost else 0
+    sign = "+" if total_pnl >= 0 else ""
+    lines.append(
+        f"\n📊 มูลค่ารวม ${total_value:,.2f} | {sign}${total_pnl:.2f} ({sign}{total_pnl_pct:.1f}%)"
+    )
+    return "\n".join(lines)
+
+
+def _portfolio_add(telegram_user_id: str, args: str, db: Session) -> str:
+    from models.portfolio import UserPortfolio
+    parts = args.strip().split()
+    if len(parts) < 3:
+        return (
+            "รูปแบบ: /portfolio add SYMBOL จำนวน ราคาซื้อ\n"
+            "ตัวอย่าง: /portfolio add AAPL 10 180.50"
+        )
+    symbol = parts[0].upper()
+    try:
+        qty = float(parts[1])
+        price = float(parts[2])
+    except ValueError:
+        return "จำนวนและราคาต้องเป็นตัวเลข"
+    if qty <= 0 or price <= 0:
+        return "จำนวนและราคาต้องมากกว่า 0"
+    existing = (
+        db.query(UserPortfolio)
+        .filter(
+            UserPortfolio.telegram_user_id == telegram_user_id,
+            UserPortfolio.symbol == symbol,
+        )
+        .first()
+    )
+    if existing:
+        total_qty = existing.quantity + qty
+        avg_price = (existing.quantity * existing.buy_price + qty * price) / total_qty
+        existing.quantity = total_qty
+        existing.buy_price = round(avg_price, 4)
+    else:
+        from models.portfolio import UserPortfolio as UP
+        db.add(UP(telegram_user_id=telegram_user_id, symbol=symbol, quantity=qty, buy_price=price))
+    db.commit()
+    return f"✅ เพิ่ม {symbol} {qty:.4g} หุ้น @ ${price:.2f} ใน Portfolio แล้ว"
+
+
+def _portfolio_remove(telegram_user_id: str, symbol: str, db: Session) -> str:
+    from models.portfolio import UserPortfolio
+    row = (
+        db.query(UserPortfolio)
+        .filter(
+            UserPortfolio.telegram_user_id == telegram_user_id,
+            UserPortfolio.symbol == symbol.upper(),
+        )
+        .first()
+    )
+    if not row:
+        return f"ไม่พบ {symbol.upper()} ใน Portfolio ของคุณ"
+    db.delete(row)
+    db.commit()
+    return f"✅ ลบ {symbol.upper()} ออกจาก Portfolio แล้ว"
+
+
+def _format_portfolio_command(args: str, telegram_user_id: str | None, db: Session | None) -> str:
+    """Parse /portfolio [add|remove|view] ..."""
+    if not telegram_user_id or not db:
+        return "Portfolio ใช้ได้เฉพาะใน private chat กับบอท"
+    parts = args.strip().split(None, 1)
+    sub = parts[0].lower() if parts else "view"
+    sub_args = parts[1] if len(parts) > 1 else ""
+    if sub == "add":
+        return _portfolio_add(telegram_user_id, sub_args, db)
+    if sub in {"remove", "rm", "del", "delete"}:
+        return _portfolio_remove(telegram_user_id, sub_args or "", db)
+    return _portfolio_view(telegram_user_id, db)
+
+
+# ---------------------------------------------------------------------------
+# Help text
+# ---------------------------------------------------------------------------
 
 def _format_help() -> str:
     return "\n".join([
@@ -272,19 +423,19 @@ def _format_watchlist_reply() -> str:
     return "\n".join(lines)
 
 
-def _format_market_symbol_reply(text: str) -> str:
+def _format_market_symbol_reply(text: str) -> TelegramReply:
     symbol = _extract_symbol(text)
     if not symbol:
-        return "Send a symbol such as AAPL, NVDA, BTC, or ETH."
+        return TelegramReply(text="ส่ง symbol เช่น AAPL, NVDA, BTC, ETH")
     data = fetch_market_data(symbol)
-    lines = [f"{symbol} market snapshot"]
-    lines.append(f"- Price: {_fmt_price(data.get('price'))}")
-    lines.append(f"- Change: {_fmt_pct(data.get('price_change_pct'))}")
+    lines = [f"📊 {symbol} — snapshot"]
+    lines.append(f"💰 ราคา: {_fmt_price(data.get('price'))}")
+    lines.append(f"📉 เปลี่ยนแปลง: {_fmt_pct(data.get('price_change_pct'))}")
     if data.get("rsi_14") is not None:
-        lines.append(f"- RSI 14: {data['rsi_14']}")
+        lines.append(f"📈 RSI 14: {data['rsi_14']}")
     if data.get("macd") is not None and data.get("macd_signal") is not None:
-        lines.append(f"- MACD: {data['macd']} / signal {data['macd_signal']}")
-    return "\n".join(lines)
+        lines.append(f"⚡ MACD: {data['macd']} / signal {data['macd_signal']}")
+    return TelegramReply(text="\n".join(lines), keyboard=_market_keyboard(symbol))
 
 
 def _format_wallet_reply(text: str) -> str:
@@ -315,31 +466,88 @@ def _format_wallet_reply(text: str) -> str:
     return "\n".join(lines)
 
 
-def build_telegram_reply(intent_info: dict[str, Any], text: str) -> str | None:
+def build_telegram_reply(
+    intent_info: dict[str, Any],
+    text: str,
+    db: Session | None = None,
+    telegram_user_id: str | None = None,
+) -> TelegramReply | None:
     intent = intent_info.get("intent", "unknown")
+    args = intent_info.get("args", "")
     try:
         if intent in {"start", "help", "unknown"}:
-            return _format_help()
+            return TelegramReply(text=_format_help())
         if intent == "ipo_hk":
-            return _format_ipo_reply(hk_only=True)
+            return TelegramReply(text=_format_ipo_reply(hk_only=True))
         if intent == "ipo":
-            return _format_ipo_reply(hk_only=False)
+            return TelegramReply(text=_format_ipo_reply(hk_only=False))
         if intent == "news":
-            return _format_news_reply()
+            return TelegramReply(text=_format_news_reply())
         if intent == "watchlist":
-            return _format_watchlist_reply()
+            return TelegramReply(text=_format_watchlist_reply())
         if intent == "wallet_check":
-            return _format_wallet_reply(text)
+            return TelegramReply(text=_format_wallet_reply(text))
         if intent == "daily_report":
             settings = get_settings()
-            return build_daily_monitor_report(
+            msg = build_daily_monitor_report(
                 max_assets=settings.telegram_private_report_max_assets,
                 max_news_items=settings.telegram_private_report_max_news_items,
             )["message"]
+            return TelegramReply(text=msg)
         if intent == "market_symbol":
             return _format_market_symbol_reply(text)
+
+        # ── New features ───────────────────────────────────────────────────
+        if intent == "analyze_symbol":
+            symbol = _extract_symbol(args) or _extract_symbol(text)
+            if not symbol:
+                return TelegramReply(text="ส่ง symbol เช่น /analyze AAPL")
+            from agents.orchestrator import Orchestrator
+            from fetchers.news_fetcher import fetch_all_news
+            market_data = fetch_market_data(symbol)
+            news = fetch_all_news(symbol)
+            result = Orchestrator().analyze(symbol, market_data, news)
+            direction = result["direction"]
+            confidence = result["confidence"]
+            icon = "🟢" if direction == "bullish" else "🔴" if direction == "bearish" else "🟡"
+            reply_text = (
+                f"{icon} {symbol} — AI วิเคราะห์\n"
+                f"ทิศทาง: {direction.upper()}  ความเชื่อมั่น: {confidence:.0%}\n"
+                f"ราคา: ${market_data.get('price', 0):,.2f}\n\n"
+                + (result.get("reasoning") or "")[:300]
+            )
+            return TelegramReply(
+                text=reply_text,
+                keyboard=[[
+                    {"text": "📈 Chart 7d",   "callback_data": f"chart:{symbol}"},
+                    {"text": "💼 Portfolio",  "callback_data": "port_view"},
+                ]],
+            )
+
+        if intent == "chart_symbol":
+            symbol = _extract_symbol(args) or _extract_symbol(text)
+            if not symbol:
+                return TelegramReply(text="ส่ง symbol เช่น /chart AAPL")
+            from services.telegram_chart import generate_price_chart
+            photo = generate_price_chart(symbol, days=7)
+            return TelegramReply(
+                photo_bytes=photo,
+                caption=f"📈 {symbol} — 7 วัน",
+                keyboard=[[
+                    {"text": "📊 วิเคราะห์ AI",  "callback_data": f"analyze:{symbol}"},
+                    {"text": "➕ เพิ่ม Port",     "callback_data": f"port_add:{symbol}"},
+                ]],
+            )
+
+        if intent == "portfolio":
+            reply_text = _format_portfolio_command(args, telegram_user_id, db)
+            keyboard = None
+            if telegram_user_id and db and not args.strip().startswith("add"):
+                keyboard = [[{"text": "🔄 Refresh", "callback_data": "port_view"}]]
+            return TelegramReply(text=reply_text, keyboard=keyboard)
+
     except Exception as exc:
-        return f"Could not fetch that data right now: {str(exc)[:180]}"
+        return TelegramReply(text=f"ขณะนี้ไม่สามารถดึงข้อมูลได้: {str(exc)[:180]}")
     return None
 
 
@@ -403,7 +611,90 @@ def _should_reply(chat_type: str, text: str, intent_info: dict[str, Any]) -> boo
     return bool(username and f"@{username}" in text.lower())
 
 
+def _dispatch_reply(
+    reply: TelegramReply,
+    client: TelegramClient,
+    chat_id: str,
+) -> str:
+    """Send the TelegramReply via the appropriate Telegram method. Returns status string."""
+    try:
+        if reply.photo_bytes:
+            client.send_photo(
+                reply.photo_bytes,
+                chat_id=chat_id,
+                caption=reply.caption,
+                keyboard=reply.keyboard,
+            )
+        elif reply.text:
+            if reply.keyboard:
+                client.send_message_with_keyboard(
+                    reply.text, chat_id=chat_id, keyboard=reply.keyboard
+                )
+            else:
+                client.send_message(reply.text, chat_id=chat_id)
+        return "sent"
+    except TelegramSendError as exc:
+        return f"failed: {str(exc)[:120]}"
+    except Exception as exc:
+        return f"failed: {str(exc)[:120]}"
+
+
+def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[str, Any]:
+    """Handle inline keyboard button presses."""
+    callback_id = str(callback_query.get("id", ""))
+    data = str(callback_query.get("data", ""))
+    from_user = callback_query.get("from") or {}
+    telegram_user_id = str(from_user.get("id", ""))
+    message = callback_query.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = str(chat.get("id", ""))
+
+    if not chat_id:
+        return {"ok": True, "handled": False, "reason": "no_chat_id"}
+
+    # Parse "action:arg"
+    parts = data.split(":", 1)
+    action = parts[0]
+    arg = parts[1] if len(parts) > 1 else ""
+
+    # Map callback actions to synthetic intent_info
+    action_intent_map = {
+        "analyze":   "analyze_symbol",
+        "chart":     "chart_symbol",
+        "port_view": "portfolio",
+        "port_add":  "portfolio",
+    }
+    intent = action_intent_map.get(action, "unknown")
+
+    # For port_add from button, synthesize "add SYMBOL" args
+    if action == "port_add":
+        args_str = f"add {arg}" if arg else ""
+    else:
+        args_str = arg
+
+    intent_info = {"intent": intent, "command": action, "args": args_str, "keywords": []}
+
+    client = TelegramClient(channel_id=chat_id)
+
+    # Acknowledge button press first (removes loading spinner)
+    try:
+        client.answer_callback_query(callback_id)
+    except Exception:
+        pass
+
+    reply = build_telegram_reply(intent_info, arg, db, telegram_user_id)
+    if not reply:
+        return {"ok": True, "handled": False}
+
+    status = _dispatch_reply(reply, client, chat_id)
+    return {"ok": True, "handled": True, "action": action, "status": status}
+
+
 def handle_telegram_update(update: dict[str, Any], db: Session) -> dict[str, Any]:
+    # Inline keyboard button press
+    if "callback_query" in update:
+        return _handle_callback_query(update["callback_query"], db)
+
     message = _message_from_update(update)
     if not message:
         return {"ok": True, "handled": False, "reason": "unsupported_update"}
@@ -456,15 +747,13 @@ def handle_telegram_update(update: dict[str, Any], db: Session) -> dict[str, Any
     db.refresh(row)
 
     if text and _should_reply(chat.chat_type, text, intent_info):
-        reply = build_telegram_reply(intent_info, text)
+        reply = build_telegram_reply(
+            intent_info, text, db,
+            user.telegram_user_id if user else None,
+        )
         if reply:
-            try:
-                TelegramClient(channel_id=chat.telegram_chat_id).send_message(reply, chat_id=chat.telegram_chat_id)
-                row.reply_status = "sent"
-            except TelegramSendError as exc:
-                row.reply_status = f"failed: {str(exc)[:120]}"
-            except Exception as exc:
-                row.reply_status = f"failed: {str(exc)[:120]}"
+            client = TelegramClient(channel_id=chat.telegram_chat_id)
+            row.reply_status = _dispatch_reply(reply, client, chat.telegram_chat_id)
             db.commit()
 
     return {

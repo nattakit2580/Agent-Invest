@@ -1,7 +1,7 @@
-﻿import axios from "axios";
+import axios from "axios";
 
-// เนเธเน /api เธเธถเนเธ Next.js เธเธฐ proxy เนเธเธซเธฒ backend เนเธ”เธขเธญเธฑเธ•เนเธเธกเธฑเธ•เธด
-// เธงเธดเธเธตเธเธตเนเธ—เธณเนเธซเนเนเธเน Cloudflare Tunnel เนเธ”เนเนเธ”เธขเนเธกเนเธ•เนเธญเธ expose backend port
+// เรียก /api เพื่อ Next.js จะ proxy ไปหา backend โดยอัตโนมัติ
+// วิธีนี้ทำให้ใช้ Cloudflare Tunnel ได้โดยไม่ต้อง expose backend port
 export const api = axios.create({
   baseURL: "/api",
 });
@@ -22,6 +22,7 @@ export interface Prediction {
   accuracy_score: number | null;
   compared_at: string | null;
   status: "pending" | "compared";
+  market_regime?: string | null;
 }
 
 export interface AgentOutput {
@@ -79,6 +80,32 @@ export interface TelegramAnalytics {
   daily_messages: TelegramDailyMessageCount[];
   recent_messages: TelegramRecentMessage[];
 }
+
+export interface DeepResearchRequest {
+  symbol: string;
+  timeframe?: string;
+  max_papers?: number;
+  max_filings?: number;
+}
+
+export interface DeepResearchResult extends Prediction {
+  deep_research: {
+    papers_found: number;
+    filings_found: number;
+    new_docs_indexed: number;
+    highlights: string[];
+  };
+  elapsed_seconds: number;
+}
+
+export interface KnowledgeStats {
+  knowledge_docs: Record<string, number>;
+  knowledge_graph: {
+    entities: Record<string, number>;
+    relationships: number;
+  };
+}
+
 export const analyzeSymbol = (symbol: string, timeframe: string) =>
   api.post<Prediction>("/analyze", { symbol, timeframe }).then((r) => r.data);
 
@@ -96,5 +123,18 @@ export const getAccuracy = (params?: Record<string, string>) =>
 
 export const getMarketData = (symbol: string) =>
   api.get(`/analyze/market/${symbol}`).then((r) => r.data);
+
 export const getTelegramAnalytics = (params?: Record<string, string | number>) =>
   api.get<TelegramAnalytics>("/telegram/analytics", { params }).then((r) => r.data);
+
+export const deepResearch = (req: DeepResearchRequest) =>
+  api.post<DeepResearchResult>("/deep-research", req).then((r) => r.data);
+
+export const getKnowledgeStats = () =>
+  api.get<KnowledgeStats>("/deep-research/knowledge/stats").then((r) => r.data);
+
+export const seedKnowledgeGraph = () =>
+  api.post("/deep-research/knowledge/seed-graph").then((r) => r.data);
+
+export const getAdminConfig = () =>
+  api.get("/admin/config").then((r) => r.data);

@@ -10,10 +10,21 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: "#f0f9ff",
-          500: "#0ea5e9",
-          600: "#0284c7",
-          900: "#0c4a6e",
+          50: "#eff6ff",
+          100: "#dbeafe",
+          500: "#3b82f6",
+          600: "#2563eb",
+          700: "#1d4ed8",
+        },
+        bullish: {
+          light: "#f0fdf4",
+          DEFAULT: "#16a34a",
+          dark: "#15803d",
+        },
+        bearish: {
+          light: "#fef2f2",
+          DEFAULT: "#dc2626",
+          dark: "#b91c1c",
         },
       },
     },
