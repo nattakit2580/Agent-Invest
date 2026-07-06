@@ -1,10 +1,44 @@
-import axios from "axios";
+import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 
 // Dev and Render frontend use /api, which Next.js rewrites to BACKEND_URL.
 // Cloudflare/static deployments can set NEXT_PUBLIC_API_URL to call the backend directly.
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "/api",
 });
+
+// Render's free tier spins the backend down after ~15 min idle. The first request
+// then hits a cold start (~20-60s) and Render's proxy returns 502/503 before the app
+// is ready. Retry those transient gateway errors so users don't see a hard failure
+// while the server wakes up. 502/503 (and no-response) mean the request never reached
+// the app, so retrying is safe and won't create duplicates.
+const RETRY_STATUSES = [502, 503, 504];
+const MAX_RETRIES = 6;
+const RETRY_DELAY_MS = 5000;
+
+type RetryConfig = InternalAxiosRequestConfig & { _retryCount?: number };
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const config = error.config as RetryConfig | undefined;
+    if (!config) return Promise.reject(error);
+
+    const status = error.response?.status;
+    const isColdStart = status === undefined || RETRY_STATUSES.includes(status);
+    config._retryCount = config._retryCount ?? 0;
+
+    if (isColdStart && config._retryCount < MAX_RETRIES) {
+      config._retryCount += 1;
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      return api(config);
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Ping the backend to trigger a cold-start wake-up ahead of a real request.
+// Fire-and-forget; the retry interceptor handles the actual analyze call.
+export const wakeBackend = () => api.get("/health").catch(() => undefined);
 
 export interface Prediction {
   id: string;

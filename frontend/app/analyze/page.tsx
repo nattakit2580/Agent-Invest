@@ -1,8 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Brain, TrendingUp, TrendingDown, Minus, AlertCircle, Loader2 } from "lucide-react";
-import { analyzeSymbol, type Prediction } from "@/lib/api";
+import { analyzeSymbol, wakeBackend, type Prediction } from "@/lib/api";
 
 const TIMEFRAMES = [
   { value: "1d", label: "1 วัน" },
@@ -14,7 +14,7 @@ const TIMEFRAMES = [
 const QUICK_SYMBOLS = ["AAPL", "TSLA", "NVDA", "BTC-USD", "ETH-USD", "PTT.BK", "AOT.BK"];
 
 type ApiError = {
-  response?: { data?: { detail?: string } };
+  response?: { status?: number; data?: { detail?: string } };
   message?: string;
 };
 
@@ -73,6 +73,12 @@ export default function AnalyzePage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<Prediction | null>(null);
 
+  // Warm up the (possibly spun-down) backend as soon as the page opens, so the
+  // server is already awake by the time the user submits a symbol.
+  useEffect(() => {
+    wakeBackend();
+  }, []);
+
   const handleAnalyze = async () => {
     if (!symbol.trim()) return;
     setLoading(true);
@@ -83,7 +89,11 @@ export default function AnalyzePage() {
       setResult(data);
     } catch (err: unknown) {
       const apiError = err as ApiError;
-      const message = apiError.response?.data?.detail || apiError.message || "วิเคราะห์ไม่สำเร็จ";
+      const status = apiError.response?.status;
+      const message =
+        status === 502 || status === 503 || status === 504
+          ? "เซิร์ฟเวอร์กำลังตื่นจากโหมดพัก กรุณากดวิเคราะห์อีกครั้งในอีกสักครู่"
+          : apiError.response?.data?.detail || apiError.message || "วิเคราะห์ไม่สำเร็จ";
       setError(message);
     } finally {
       setLoading(false);
@@ -162,6 +172,11 @@ export default function AnalyzePage() {
             </>
           )}
         </button>
+        {loading && (
+          <p className="text-xs text-slate-500 text-center mt-3">
+            ครั้งแรกอาจใช้เวลาถึง ~1 นาที หากเซิร์ฟเวอร์เพิ่งตื่นจากโหมดพัก
+          </p>
+        )}
       </div>
 
       {error && (
