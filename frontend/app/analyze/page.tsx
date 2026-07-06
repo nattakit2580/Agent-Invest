@@ -100,7 +100,7 @@ export default function AnalyzePage() {
           <Brain className="w-8 h-8 text-sky-400" />
           วิเคราะห์การลงทุน
         </h1>
-        <p className="text-slate-400 mt-1">ป้อน symbol เพื่อให้ Multi-Agent AI วิเคราะห์ด้วยโมเดล DeepSeek</p>
+        <p className="text-slate-400 mt-1">ป้อน symbol เพื่อให้ Multi-Agent AI วิเคราะห์</p>
       </div>
 
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-5">

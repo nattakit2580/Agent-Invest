@@ -68,30 +68,43 @@ function formatDateHeading(dateStr: string) {
 
 export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [range, setRange] = useState(14);
+  const [range, setRange] = useState(30);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [autoRefreshed, setAutoRefreshed] = useState(false);
 
   const load = useCallback((days: number) => {
     setLoading(true);
-    getCalendarEvents(days)
-      .then((res) => setEvents(res.events))
+    return getCalendarEvents(days)
+      .then((res) => {
+        setEvents(res.events);
+        return res.events;
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    load(range);
-  }, [range, load]);
+  const handleRefresh = useCallback(
+    async (days: number) => {
+      setRefreshing(true);
+      try {
+        await refreshCalendar();
+        await load(days);
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [load]
+  );
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await refreshCalendar();
-      load(range);
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  useEffect(() => {
+    load(range).then((list) => {
+      // First load with an empty DB (e.g. right after deploy): pull data once automatically.
+      if (list && list.length === 0 && !autoRefreshed) {
+        setAutoRefreshed(true);
+        handleRefresh(range);
+      }
+    });
+  }, [range, load, handleRefresh, autoRefreshed]);
 
   // group by date
   const grouped = events.reduce<Record<string, CalendarEvent[]>>((acc, ev) => {
@@ -111,7 +124,7 @@ export default function CalendarPage() {
           <p className="text-slate-400 mt-1">แจ้งเตือนล่วงหน้า: วันประกาศงบ · ปันผล · IPO</p>
         </div>
         <button
-          onClick={handleRefresh}
+          onClick={() => handleRefresh(range)}
           disabled={refreshing}
           className="shrink-0 inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
         >
