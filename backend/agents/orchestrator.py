@@ -76,8 +76,9 @@ class Orchestrator:
         timeframe: str,
         similar_cases: list[dict] | None = None,
         agent_feedback: dict | None = None,
+        regime: str | None = None,
     ) -> dict:
-        # use dynamic weights from track record if available
+        # use regime-aware weights when available, otherwise fall back to track-record weights
         weights = agent_feedback.get("weights") if agent_feedback else None
         direction, confidence = self._weighted_direction(agent_outputs, weights)
 
@@ -117,6 +118,11 @@ class Orchestrator:
         if agent_feedback and agent_feedback.get("prompt_section"):
             track_section = "\n\n" + agent_feedback["prompt_section"]
 
+        # inject regime context (weights + market condition classification)
+        regime_section = ""
+        if agent_feedback and agent_feedback.get("regime_section"):
+            regime_section = "\n\n" + agent_feedback["regime_section"]
+
         user = f"""Synthesize these analysis reports for {symbol} ({timeframe} outlook):
 
 {summaries}
@@ -124,7 +130,7 @@ class Orchestrator:
 KEY POINTS FROM ALL AGENTS:
 {chr(10).join(f'- {p}' for p in all_key_points)}
 
-MARKET DATA: Price={current_price}, Change={market_data.get('price_change_pct')}%{track_section}{similar_section}
+MARKET DATA: Price={current_price}, Change={market_data.get('price_change_pct')}%{regime_section}{track_section}{similar_section}
 
 Return this exact JSON:
 {{
@@ -181,6 +187,7 @@ Return this exact JSON:
             "critic": critic_result,
             "agent_outputs": agent_outputs_with_critic,
             "weights_used": weights or DEFAULT_WEIGHTS,
+            "market_regime": regime,
         }
 
     def analyze(
@@ -191,6 +198,7 @@ Return this exact JSON:
         timeframe: str = "1w",
         similar_cases: list[dict] | None = None,
         agent_feedback: dict | None = None,
+        regime: str | None = None,
     ) -> dict:
         agent_outputs = self.run_all_agents(symbol, market_data, news)
-        return self.synthesize(symbol, market_data, agent_outputs, timeframe, similar_cases, agent_feedback)
+        return self.synthesize(symbol, market_data, agent_outputs, timeframe, similar_cases, agent_feedback, regime)

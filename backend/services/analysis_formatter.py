@@ -1,4 +1,5 @@
 """Format analysis results into Telegram messages."""
+from services.market_regime import REGIME_DISPLAY_TH
 
 DIRECTION_ICON = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}
 DIRECTION_TH = {"bullish": "ขาขึ้น", "bearish": "ขาลง", "neutral": "ทรงตัว"}
@@ -11,11 +12,15 @@ def format_analysis(symbol: str, result: dict, timeframe: str = "1w") -> str:
     price = result.get("current_price", 0)
     target = result.get("target_price")
     tf_th = TIMEFRAME_TH.get(timeframe, timeframe)
+    regime = result.get("market_regime")
 
     lines = []
 
     # Header
     lines.append(f"📊 {symbol} — วิเคราะห์ ({tf_th})")
+    if regime:
+        regime_label = REGIME_DISPLAY_TH.get(regime, regime)
+        lines.append(f"🌐 ภาวะตลาด: {regime_label}")
     lines.append("")
 
     # Direction + confidence

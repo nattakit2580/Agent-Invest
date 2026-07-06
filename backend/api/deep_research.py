@@ -12,6 +12,7 @@ from fetchers.news_fetcher import fetch_all_news
 from agents.deep_research_agent import DeepResearchAgent
 from agents.orchestrator import Orchestrator
 from services.agent_feedback import get_agent_feedback
+from services.market_regime import detect_regime
 from services.knowledge_rag import count_documents
 from services.kg_rag import get_graph_context, seed_watchlist, get_graph_stats
 from services import rag as rag_service
@@ -71,12 +72,13 @@ def deep_research(req: DeepResearchRequest, db: Session = Depends(get_db)):
     # RAG similar cases
     similar_cases = rag_service.get_similar_cases(symbol, market_data, agent_outputs, db)
 
-    # Agent feedback / dynamic weights
-    agent_fb = get_agent_feedback(db)
+    # Agent feedback / dynamic weights (regime-aware)
+    regime = detect_regime(market_data, news)
+    agent_fb = get_agent_feedback(db, regime=regime)
 
     # Synthesis + critic
     result = orchestrator.synthesize(
-        symbol, market_data, agent_outputs, req.timeframe, similar_cases, agent_fb
+        symbol, market_data, agent_outputs, req.timeframe, similar_cases, agent_fb, regime
     )
 
     # ── Attach research metadata ──────────────────────────────────────────

@@ -44,8 +44,9 @@ def auto_compare_due_predictions():
             p.compared_at = now
             p.status = "compared"
 
-            # save evaluation breakdown
+            # save evaluation breakdown (copy market_regime from prediction)
             eval_data = build_evaluation(p, actual_price)
+            eval_data["market_regime"] = p.market_regime
             existing = db.query(EvaluationResult).filter(
                 EvaluationResult.prediction_id == p.id
             ).first()
@@ -75,11 +76,11 @@ def auto_analyze_watchlist():
     from agents.orchestrator import Orchestrator
     from services import rag as rag_service
     from services.agent_feedback import get_agent_feedback
+    from services.market_regime import detect_regime
     orchestrator = Orchestrator()
 
     db: Session = SessionLocal()
     try:
-        agent_fb = get_agent_feedback(db)
         for symbol in symbols:
             try:
                 # skip if a pending prediction already exists for this symbol + timeframe
@@ -96,8 +97,10 @@ def auto_analyze_watchlist():
 
                 market_data = fetch_market_data(symbol)
                 news = fetch_all_news(symbol)
+                regime = detect_regime(market_data, news)
                 similar_cases = rag_service.get_similar_cases(symbol, market_data, None, db)
-                result = orchestrator.analyze(symbol, market_data, news, settings.auto_analyze_timeframe, similar_cases, agent_fb)
+                agent_fb = get_agent_feedback(db, regime=regime)
+                result = orchestrator.analyze(symbol, market_data, news, settings.auto_analyze_timeframe, similar_cases, agent_fb, regime=regime)
 
                 prediction = Prediction(
                     symbol=symbol,
@@ -109,6 +112,7 @@ def auto_analyze_watchlist():
                     reasoning=result["reasoning"],
                     agent_outputs=result["agent_outputs"],
                     status="pending",
+                    market_regime=result.get("market_regime"),
                 )
                 db.add(prediction)
                 db.commit()

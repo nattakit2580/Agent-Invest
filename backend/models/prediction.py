@@ -28,6 +28,7 @@ class Prediction(Base):
     accuracy_score = Column(Float, nullable=True)           # 0.0 โ€“ 1.0
     compared_at = Column(DateTime, nullable=True)
     status = Column(String(20), default="pending")          # pending / compared
+    market_regime = Column(String(20), nullable=True)        # volatile/trending_up/trending_down/earnings_season/news_driven/sideways
 
 
 class MarketSnapshot(Base):

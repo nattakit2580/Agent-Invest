@@ -8,6 +8,7 @@ from fetchers.news_fetcher import fetch_all_news
 from agents.orchestrator import Orchestrator
 from services import rag as rag_service
 from services.agent_feedback import get_agent_feedback
+from services.market_regime import detect_regime
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 orchestrator = Orchestrator()
@@ -22,6 +23,8 @@ def analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
 
     news = fetch_all_news(req.symbol.upper())
 
+    regime = detect_regime(market_data, news)
+
     # RAG retrieval uses market_data only (agents haven't run yet).
     # We pass agent_outputs=None intentionally — market context alone is sufficient
     # for finding structurally similar past cases before agents produce their output.
@@ -29,8 +32,8 @@ def analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
         req.symbol.upper(), market_data, None, db
     )
 
-    agent_fb = get_agent_feedback(db)
-    result = orchestrator.analyze(req.symbol.upper(), market_data, news, req.timeframe, similar_cases, agent_fb)
+    agent_fb = get_agent_feedback(db, regime=regime)
+    result = orchestrator.analyze(req.symbol.upper(), market_data, news, req.timeframe, similar_cases, agent_fb, regime=regime)
 
     snapshot = MarketSnapshot(
         symbol=req.symbol.upper(),
@@ -57,6 +60,7 @@ def analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
         reasoning=result["reasoning"],
         agent_outputs=result["agent_outputs"],
         status="pending",
+        market_regime=result.get("market_regime"),
     )
     db.add(prediction)
     db.commit()
