@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     database_url: str = "postgresql://agent:secret@localhost:5432/agent_invest"
     news_api_key: str = ""
+    alpha_vantage_api_key: str = ""          # https://www.alphavantage.co/support/#api-key (free 25 req/day)
+    finnhub_api_key: str = ""                # https://finnhub.io (free 60 calls/min)
     frontend_url: str = "http://localhost:3000"
     fetch_interval_minutes: int = 30
     telegram_bot_token: str = ""
