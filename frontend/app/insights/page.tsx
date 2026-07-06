@@ -46,7 +46,7 @@ export default function InsightsPage() {
   }, []);
 
   if (loading) return <div className="text-slate-400 p-8">กำลังโหลด...</div>;
-  if (!weights) return <div className="text-red-400 p-8">ไม่สามารถโหลดข้อมูลได้</div>;
+  if (!weights) return <div className="text-red-600 p-8">ไม่สามารถโหลดข้อมูลได้</div>;
 
   const active = weights.dynamic_weights_active;
   const totalEvals = weights.total_evals;
@@ -70,8 +70,8 @@ export default function InsightsPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
-          <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-sky-400" />
+        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 flex items-center gap-3">
+          <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600" />
           ระบบเรียนรู้
         </h1>
         <p className="text-slate-400 mt-1">
@@ -82,21 +82,21 @@ export default function InsightsPage() {
       {/* status banner */}
       <div
         className={`rounded-xl p-5 flex items-start gap-3 border ${
-          active ? "bg-emerald-900/20 border-emerald-700/50" : "bg-slate-800 border-slate-700"
+          active ? "bg-emerald-50 border-emerald-700/50" : "bg-white border-slate-200"
         }`}
       >
-        <Info className={`w-5 h-5 shrink-0 mt-0.5 ${active ? "text-emerald-400" : "text-slate-400"}`} />
+        <Info className={`w-5 h-5 shrink-0 mt-0.5 ${active ? "text-emerald-600" : "text-slate-400"}`} />
         <div className="text-sm">
           {active ? (
             <>
-              <p className="text-emerald-300 font-medium">ระบบกำลังใช้น้ำหนักที่เรียนรู้จากผลจริงแล้ว</p>
-              <p className="text-emerald-200/70 mt-1">
+              <p className="text-emerald-700 font-medium">ระบบกำลังใช้น้ำหนักที่เรียนรู้จากผลจริงแล้ว</p>
+              <p className="text-emerald-700/70 mt-1">
                 อ้างอิงจากการประเมินผลแล้ว {totalEvals} รายการ — น้ำหนักด้านล่างถูกปรับตามความแม่นยำจริงของแต่ละ Agent
               </p>
             </>
           ) : (
             <>
-              <p className="text-slate-200 font-medium">กำลังสะสมข้อมูลเพื่อเริ่มเรียนรู้</p>
+              <p className="text-slate-700 font-medium">กำลังสะสมข้อมูลเพื่อเริ่มเรียนรู้</p>
               <p className="text-slate-400 mt-1">
                 ประเมินผลแล้ว {totalEvals}/{MIN_EVALS_FOR_DYNAMIC} รายการ — เมื่อครบ {MIN_EVALS_FOR_DYNAMIC} ระบบจะเริ่มปรับน้ำหนักอัตโนมัติ (ระหว่างนี้ใช้น้ำหนักมาตรฐาน)
               </p>
@@ -107,29 +107,29 @@ export default function InsightsPage() {
 
       {/* best / worst */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <div className="bg-white border border-slate-200 rounded-xl p-5">
           <p className="text-xs text-slate-400 uppercase tracking-wider">ประเมินผลแล้ว</p>
-          <p className="text-3xl font-bold text-white mt-1">{totalEvals}</p>
+          <p className="text-3xl font-bold text-slate-900 mt-1">{totalEvals}</p>
           <p className="text-xs text-slate-500 mt-1">รายการ</p>
         </div>
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-center gap-4">
-          <div className="bg-emerald-900/40 p-3 rounded-lg">
-            <Trophy className="w-6 h-6 text-emerald-400" />
+        <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center gap-4">
+          <div className="bg-emerald-50 p-3 rounded-lg">
+            <Trophy className="w-6 h-6 text-emerald-600" />
           </div>
           <div>
             <p className="text-xs text-slate-400 uppercase tracking-wider">Agent แม่นสุด</p>
-            <p className="text-xl font-bold text-emerald-400 mt-1">
+            <p className="text-xl font-bold text-emerald-600 mt-1">
               {bestAgent ? AGENT_LABELS[bestAgent.agent] ?? bestAgent.agent : "—"}
             </p>
           </div>
         </div>
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-center gap-4">
-          <div className="bg-red-900/40 p-3 rounded-lg">
-            <AlertTriangle className="w-6 h-6 text-red-400" />
+        <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center gap-4">
+          <div className="bg-red-50 p-3 rounded-lg">
+            <AlertTriangle className="w-6 h-6 text-red-600" />
           </div>
           <div>
             <p className="text-xs text-slate-400 uppercase tracking-wider">ต้องปรับปรุง</p>
-            <p className="text-xl font-bold text-red-400 mt-1">
+            <p className="text-xl font-bold text-red-600 mt-1">
               {worstAgent ? AGENT_LABELS[worstAgent.agent] ?? worstAgent.agent : "—"}
             </p>
           </div>
@@ -137,16 +137,16 @@ export default function InsightsPage() {
       </div>
 
       {/* per-agent accuracy */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
-          <Brain className="w-5 h-5 text-sky-400" />
+      <div className="bg-white border border-slate-200 rounded-xl p-6">
+        <h2 className="text-lg font-semibold text-slate-900 mb-1 flex items-center gap-2">
+          <Brain className="w-5 h-5 text-blue-600" />
           ความแม่นยำรายตัวของแต่ละ Agent
         </h2>
         <p className="text-slate-500 text-sm mb-5">คำนวณจากทิศทางที่แต่ละ Agent ทายไว้ เทียบกับผลจริง</p>
         {accData.length === 0 ? (
           <div className="text-slate-500 text-sm py-8 text-center">
             ยังไม่มีข้อมูลประเมินผล — เริ่ม{" "}
-            <a href="/analyze" className="text-sky-400 hover:underline">
+            <a href="/analyze" className="text-blue-600 hover:underline">
               วิเคราะห์
             </a>{" "}
             แล้วรอเทียบผลตาม timeframe
@@ -173,9 +173,9 @@ export default function InsightsPage() {
       </div>
 
       {/* base vs learned weights */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
-          <Scale className="w-5 h-5 text-sky-400" />
+      <div className="bg-white border border-slate-200 rounded-xl p-6">
+        <h2 className="text-lg font-semibold text-slate-900 mb-1 flex items-center gap-2">
+          <Scale className="w-5 h-5 text-blue-600" />
           น้ำหนักการโหวต: มาตรฐาน vs เรียนรู้แล้ว
         </h2>
         <p className="text-slate-500 text-sm mb-5">

@@ -34,6 +34,7 @@ def _prediction_to_dict(p: Prediction) -> dict:
         "accuracy_score": p.accuracy_score,
         "compared_at": p.compared_at.isoformat() if p.compared_at else None,
         "status": p.status,
+        "market_regime": p.market_regime,
     }
 
 

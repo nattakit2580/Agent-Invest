@@ -17,18 +17,18 @@ function fmtValue(v: number | null): string {
 
 function changeTone(change: number | null) {
   if (change === null || change === undefined || change === 0)
-    return { color: "text-slate-400", Icon: Minus, ring: "border-slate-700" };
-  if (change > 0) return { color: "text-emerald-400", Icon: TrendingUp, ring: "border-emerald-800/60" };
-  return { color: "text-red-400", Icon: TrendingDown, ring: "border-red-800/60" };
+    return { color: "text-slate-400", Icon: Minus, ring: "border-slate-200" };
+  if (change > 0) return { color: "text-emerald-600", Icon: TrendingUp, ring: "border-emerald-800/60" };
+  return { color: "text-red-600", Icon: TrendingDown, ring: "border-red-800/60" };
 }
 
 function IndicatorCard({ item }: { item: EconomicIndicator }) {
   const { color, Icon, ring } = changeTone(item.change);
   return (
-    <div className={`bg-slate-800 border ${ring} rounded-xl p-5 flex flex-col justify-between hover:border-slate-600 transition-colors`}>
+    <div className={`bg-white border ${ring} rounded-xl p-5 flex flex-col justify-between hover:border-slate-200 transition-colors`}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-white font-semibold leading-tight">{item.label}</p>
+          <p className="text-slate-900 font-semibold leading-tight">{item.label}</p>
           <p className="text-[11px] text-slate-500 mt-0.5 font-mono">{item.series_id}</p>
         </div>
         <span className={`inline-flex items-center gap-1 text-xs font-medium ${color}`}>
@@ -38,7 +38,7 @@ function IndicatorCard({ item }: { item: EconomicIndicator }) {
 
       <div className="mt-4">
         <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold text-white">{fmtValue(item.value)}</span>
+          <span className="text-2xl font-bold text-slate-900">{fmtValue(item.value)}</span>
           {item.unit && <span className="text-xs text-slate-500">{item.unit}</span>}
         </div>
         <div className={`flex items-center gap-2 mt-1 text-sm ${color}`}>
@@ -57,7 +57,7 @@ function IndicatorCard({ item }: { item: EconomicIndicator }) {
         </div>
       </div>
 
-      <div className="mt-4 pt-3 border-t border-slate-700/60 flex items-center justify-between text-[11px] text-slate-500">
+      <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500">
         <span>อ้างอิง {item.observation_date ?? "—"}</span>
       </div>
     </div>
@@ -103,8 +103,8 @@ export default function EconomicPage() {
     <div className="max-w-6xl mx-auto space-y-8">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
-            <LineChart className="w-7 h-7 sm:w-8 sm:h-8 text-sky-400" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 flex items-center gap-3">
+            <LineChart className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600" />
             ตัวเลขเศรษฐกิจ
           </h1>
           <p className="text-slate-400 mt-1">
@@ -119,7 +119,7 @@ export default function EconomicPage() {
         <button
           onClick={handleRefresh}
           disabled={refreshing || !configured}
-          className="shrink-0 inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+          className="shrink-0 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
         >
           <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
           รีเฟรชข้อมูล
@@ -127,11 +127,11 @@ export default function EconomicPage() {
       </div>
 
       {!configured && (
-        <div className="bg-amber-900/20 border border-amber-700/50 rounded-xl p-5 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+        <div className="bg-amber-50 border border-amber-700/50 rounded-xl p-5 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="text-sm">
-            <p className="text-amber-300 font-medium">ยังไม่ได้ตั้งค่า FRED API key</p>
-            <p className="text-amber-200/70 mt-1">
+            <p className="text-amber-700 font-medium">ยังไม่ได้ตั้งค่า FRED API key</p>
+            <p className="text-amber-700/70 mt-1">
               สมัครฟรีที่{" "}
               <a
                 href="https://fredaccount.stlouisfed.org/apikeys"
@@ -141,8 +141,8 @@ export default function EconomicPage() {
               >
                 fredaccount.stlouisfed.org/apikeys
               </a>{" "}
-              แล้วใส่ค่า <code className="bg-slate-800 px-1.5 py-0.5 rounded">FRED_API_KEY</code> ในไฟล์{" "}
-              <code className="bg-slate-800 px-1.5 py-0.5 rounded">backend/.env</code>
+              แล้วใส่ค่า <code className="bg-white px-1.5 py-0.5 rounded">FRED_API_KEY</code> ในไฟล์{" "}
+              <code className="bg-white px-1.5 py-0.5 rounded">backend/.env</code>
             </p>
           </div>
         </div>
@@ -151,11 +151,11 @@ export default function EconomicPage() {
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="bg-slate-800 border border-slate-700 rounded-xl p-5 h-40 animate-pulse" />
+            <div key={i} className="bg-white border border-slate-200 rounded-xl p-5 h-40 animate-pulse" />
           ))}
         </div>
       ) : data.length === 0 ? (
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-10 text-center text-slate-500">
+        <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-500">
           ยังไม่มีข้อมูลตัวเลขเศรษฐกิจ — กด &quot;รีเฟรชข้อมูล&quot; เพื่อดึงจาก FRED
         </div>
       ) : (

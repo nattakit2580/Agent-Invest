@@ -50,17 +50,35 @@ const STAGES = [
   { key: "saving", label: "บันทึก" },
 ];
 
+const REGIME_STYLES: Record<string, string> = {
+  volatile: "bg-amber-50 text-amber-700 border border-amber-200",
+  trending_up: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  trending_down: "bg-red-50 text-red-700 border border-red-200",
+  earnings_season: "bg-violet-50 text-violet-700 border border-violet-200",
+  news_driven: "bg-blue-50 text-blue-700 border border-blue-200",
+  sideways: "bg-slate-50 text-slate-600 border border-slate-200",
+};
+
+function RegimeBadge({ regime }: { regime: string }) {
+  const style = REGIME_STYLES[regime] ?? "bg-slate-50 text-slate-600 border border-slate-200";
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${style}`}>
+      {regime.replace(/_/g, " ")}
+    </span>
+  );
+}
+
 type AgentOutput = Record<string, unknown>;
 type SynthesisData = Extract<AnalyzeStreamEvent, { type: "synthesis" }>;
 
 function dirColor(d: string) {
-  return d === "bullish" ? "text-emerald-400" : d === "bearish" ? "text-red-400" : "text-slate-400";
+  return d === "bullish" ? "text-emerald-600" : d === "bearish" ? "text-red-600" : "text-slate-400";
 }
 function dirBar(d: string) {
   return d === "bullish" ? "bg-emerald-500" : d === "bearish" ? "bg-red-500" : "bg-slate-500";
 }
 function dirBorder(d: string) {
-  return d === "bullish" ? "border-emerald-700" : d === "bearish" ? "border-red-700" : "border-slate-600";
+  return d === "bullish" ? "border-emerald-700" : d === "bearish" ? "border-red-700" : "border-slate-200";
 }
 function DirectionIcon({ d, className }: { d: string; className?: string }) {
   if (d === "bullish") return <TrendingUp className={className} />;
@@ -94,16 +112,16 @@ function AgentCard({ name, output }: { name: string; output: AgentOutput | null 
 
   if (!output) {
     return (
-      <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-5 animate-pulse">
+      <div className="bg-white border border-slate-200 rounded-xl p-5 animate-pulse">
         <div className="flex items-center gap-2 text-slate-400">
           <Icon className="w-4 h-4" />
           <span className="text-sm font-medium">{meta.label}</span>
-          <Loader2 className="w-3.5 h-3.5 animate-spin ml-auto text-sky-400" />
+          <Loader2 className="w-3.5 h-3.5 animate-spin ml-auto text-blue-600" />
         </div>
         <div className="mt-4 space-y-2">
-          <div className="h-2 bg-slate-700 rounded w-full" />
-          <div className="h-2 bg-slate-700 rounded w-4/5" />
-          <div className="h-2 bg-slate-700 rounded w-2/3" />
+          <div className="h-2 bg-slate-100 rounded w-full" />
+          <div className="h-2 bg-slate-100 rounded w-4/5" />
+          <div className="h-2 bg-slate-100 rounded w-2/3" />
         </div>
       </div>
     );
@@ -116,10 +134,10 @@ function AgentCard({ name, output }: { name: string; output: AgentOutput | null 
   const keyPoints = ((isCritic ? output.counter_points : output.key_points) as string[]) || [];
 
   return (
-    <div className={`bg-slate-800 border rounded-xl p-5 ${dirBorder(dir)} animate-[fadeIn_0.3s_ease-out]`}>
+    <div className={`bg-white border rounded-xl p-5 ${dirBorder(dir)} animate-[fadeIn_0.3s_ease-out]`}>
       <div className="flex items-center justify-between mb-3 gap-3">
-        <span className="text-white font-semibold text-sm flex items-center gap-2">
-          <Icon className="w-4 h-4 text-sky-400" />
+        <span className="text-slate-900 font-semibold text-sm flex items-center gap-2">
+          <Icon className="w-4 h-4 text-blue-600" />
           {meta.label}
         </span>
         <div className="flex items-center gap-2 shrink-0">
@@ -128,7 +146,7 @@ function AgentCard({ name, output }: { name: string; output: AgentOutput | null 
         </div>
       </div>
       {!isCritic && (
-        <div className="w-full bg-slate-700 rounded-full h-1 mb-3">
+        <div className="w-full bg-slate-100 rounded-full h-1 mb-3">
           <div
             className={`h-1 rounded-full transition-all duration-500 ${dirBar(dir)}`}
             style={{ width: `${Math.max(0, Math.min(conf, 1)) * 100}%` }}
@@ -136,14 +154,14 @@ function AgentCard({ name, output }: { name: string; output: AgentOutput | null 
         </div>
       )}
       {summary && (
-        <p className="text-slate-300 text-xs leading-relaxed mb-2">
+        <p className="text-slate-600 text-xs leading-relaxed mb-2">
           <Typewriter text={summary} />
         </p>
       )}
       <ul className="space-y-1">
         {keyPoints.slice(0, 3).map((pt, i) => (
           <li key={i} className="text-slate-500 text-xs flex items-start gap-1">
-            <span className="text-sky-500 mt-0.5">•</span> {pt}
+            <span className="text-blue-600 mt-0.5">•</span> {pt}
           </li>
         ))}
       </ul>
@@ -162,10 +180,10 @@ function StageStepper({ current, done }: { current: string; done: boolean }) {
             <span
               className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors ${
                 state === "done"
-                  ? "border-emerald-700 bg-emerald-900/30 text-emerald-300"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                   : state === "active"
-                  ? "border-sky-600 bg-sky-900/40 text-sky-200"
-                  : "border-slate-700 bg-slate-800 text-slate-500"
+                  ? "border-blue-200 bg-blue-50 text-blue-700"
+                  : "border-slate-200 bg-white text-slate-500"
               }`}
             >
               {state === "done" ? (
@@ -177,7 +195,7 @@ function StageStepper({ current, done }: { current: string; done: boolean }) {
               )}
               {s.label}
             </span>
-            {i < STAGES.length - 1 && <span className="w-2 h-px bg-slate-700" />}
+            {i < STAGES.length - 1 && <span className="w-2 h-px bg-slate-100" />}
           </div>
         );
       })}
@@ -292,14 +310,14 @@ export default function AnalyzePage() {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-          <Brain className="w-8 h-8 text-sky-400" />
+        <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+          <Brain className="w-8 h-8 text-blue-600" />
           วิเคราะห์การลงทุน
         </h1>
         <p className="text-slate-400 mt-1">ป้อน symbol เพื่อให้ Multi-Agent AI วิเคราะห์</p>
       </div>
 
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-5">
+      <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
         <div>
           <label className="block text-sm text-slate-400 mb-2">Symbol</label>
           <input
@@ -307,14 +325,14 @@ export default function AnalyzePage() {
             onChange={(e) => setSymbol(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
             placeholder="เช่น AAPL, BTC-USD, PTT.BK"
-            className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-sky-500"
+            className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
           />
           <div className="flex gap-2 mt-2 flex-wrap">
             {QUICK_SYMBOLS.map((s) => (
               <button
                 key={s}
                 onClick={() => setSymbol(s)}
-                className="text-xs px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-full transition-colors"
+                className="text-xs px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full transition-colors"
               >
                 {s}
               </button>
@@ -330,7 +348,7 @@ export default function AnalyzePage() {
                 key={tf.value}
                 onClick={() => setTimeframe(tf.value)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  timeframe === tf.value ? "bg-sky-600 text-white" : "bg-slate-700 text-slate-400 hover:bg-slate-600"
+                  timeframe === tf.value ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-400 hover:bg-slate-200"
                 }`}
               >
                 {tf.label}
@@ -342,7 +360,7 @@ export default function AnalyzePage() {
         <button
           onClick={handleAnalyze}
           disabled={running || !symbol.trim()}
-          className="w-full bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-lg py-3 flex items-center justify-center gap-2 transition-colors"
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-500 text-white font-semibold rounded-lg py-3 flex items-center justify-center gap-2 transition-colors"
         >
           {running ? (
             <>
@@ -364,7 +382,7 @@ export default function AnalyzePage() {
       </div>
 
       {error && (
-        <div className="bg-red-900/30 border border-red-700 rounded-xl p-4 flex items-center gap-3 text-red-400">
+        <div className="bg-red-50 border border-red-700 rounded-xl p-4 flex items-center gap-3 text-red-600">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <span className="text-sm">{error}</span>
         </div>
@@ -378,8 +396,8 @@ export default function AnalyzePage() {
           {/* summary header — provisional while streaming, final once done */}
           {(synthesis || result) && (
             <div className={`rounded-xl p-6 border-2 ${
-              headDir === "bullish" ? "bg-emerald-900/20 border-emerald-600" :
-              headDir === "bearish" ? "bg-red-900/20 border-red-600" : "bg-slate-800 border-slate-600"
+              headDir === "bullish" ? "bg-emerald-50 border-emerald-600" :
+              headDir === "bearish" ? "bg-red-50 border-red-600" : "bg-white border-slate-200"
             }`}>
               <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
                 <div className="min-w-0">
@@ -387,36 +405,37 @@ export default function AnalyzePage() {
                     <span className={dirColor(headDir)}>
                       <DirectionIcon d={headDir} className="w-6 h-6" />
                     </span>
-                    <h2 className="text-2xl font-bold text-white">{symbol.toUpperCase()}</h2>
+                    <h2 className="text-2xl font-bold text-slate-900">{symbol.toUpperCase()}</h2>
                     <span className={`text-lg font-semibold capitalize ${dirColor(headDir)}`}>{headDir}</span>
+                    {result?.market_regime && <RegimeBadge regime={result.market_regime} />}
                     {!result && <span className="text-xs text-slate-500">(ชั่วคราว)</span>}
                   </div>
-                  <p className="text-slate-300 mt-3 leading-relaxed text-sm">
+                  <p className="text-slate-600 mt-3 leading-relaxed text-sm">
                     <Typewriter text={reasoning} />
                   </p>
                 </div>
                 <div className="text-left md:text-right shrink-0">
                   <div className="text-slate-400 text-xs">Confidence</div>
-                  <div className="text-3xl font-bold text-white">{(headConf * 100).toFixed(0)}%</div>
+                  <div className="text-3xl font-bold text-slate-900">{(headConf * 100).toFixed(0)}%</div>
                   <div className="text-slate-400 text-xs mt-2">Entry</div>
-                  <div className="text-white font-semibold">${headPrice.toFixed(2)}</div>
+                  <div className="text-slate-900 font-semibold">${headPrice.toFixed(2)}</div>
                   {headTarget != null && (
                     <>
                       <div className="text-slate-400 text-xs mt-1">Target</div>
-                      <div className="text-sky-400 font-semibold">${headTarget.toFixed(2)}</div>
+                      <div className="text-blue-600 font-semibold">${headTarget.toFixed(2)}</div>
                     </>
                   )}
                 </div>
               </div>
 
               {(keyRisks.length > 0 || catalysts.length > 0 || recommendation) && (
-                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-700/60 pt-4">
+                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-200/60 pt-4">
                   {catalysts.length > 0 && (
                     <div>
-                      <div className="text-xs font-semibold text-emerald-400 mb-1.5">🚀 ปัจจัยหนุน</div>
+                      <div className="text-xs font-semibold text-emerald-600 mb-1.5">🚀 ปัจจัยหนุน</div>
                       <ul className="space-y-1">
                         {catalysts.map((c, i) => (
-                          <li key={i} className="text-slate-300 text-xs flex gap-1.5">
+                          <li key={i} className="text-slate-600 text-xs flex gap-1.5">
                             <span className="text-emerald-500">•</span> {c}
                           </li>
                         ))}
@@ -425,10 +444,10 @@ export default function AnalyzePage() {
                   )}
                   {keyRisks.length > 0 && (
                     <div>
-                      <div className="text-xs font-semibold text-amber-400 mb-1.5">⚠️ ความเสี่ยง</div>
+                      <div className="text-xs font-semibold text-amber-600 mb-1.5">⚠️ ความเสี่ยง</div>
                       <ul className="space-y-1">
                         {keyRisks.map((r, i) => (
-                          <li key={i} className="text-slate-300 text-xs flex gap-1.5">
+                          <li key={i} className="text-slate-600 text-xs flex gap-1.5">
                             <span className="text-amber-500">•</span> {r}
                           </li>
                         ))}
@@ -437,8 +456,8 @@ export default function AnalyzePage() {
                   )}
                   {recommendation && (
                     <div className="sm:col-span-2">
-                      <div className="text-xs font-semibold text-sky-400 mb-1">📌 คำแนะนำ</div>
-                      <p className="text-slate-200 text-sm">{recommendation}</p>
+                      <div className="text-xs font-semibold text-blue-600 mb-1">📌 คำแนะนำ</div>
+                      <p className="text-slate-700 text-sm">{recommendation}</p>
                     </div>
                   )}
                 </div>
@@ -448,7 +467,7 @@ export default function AnalyzePage() {
 
           {/* per-agent cards — appear as each finishes */}
           <div>
-            <h3 className="text-lg font-semibold text-white mb-3">ผลวิเคราะห์แยก Agent</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-3">ผลวิเคราะห์แยก Agent</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {ANALYST_ORDER.map((name) => (
                 <AgentCard key={name} name={name} output={agents[name] ?? null} />
@@ -459,7 +478,7 @@ export default function AnalyzePage() {
           {/* critic */}
           {critic && (
             <div>
-              <h3 className="text-lg font-semibold text-white mb-3">การตรวจทานความเสี่ยง</h3>
+              <h3 className="text-lg font-semibold text-slate-900 mb-3">การตรวจทานความเสี่ยง</h3>
               <AgentCard name="_critic" output={critic} />
             </div>
           )}
@@ -468,13 +487,13 @@ export default function AnalyzePage() {
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={() => router.push("/predictions")}
-                className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-lg text-sm font-medium transition-colors"
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-900 py-3 rounded-lg text-sm font-medium transition-colors"
               >
                 ดูประวัติทั้งหมด
               </button>
               <button
                 onClick={() => { reset(); setSymbol(""); }}
-                className="flex-1 bg-sky-600 hover:bg-sky-500 text-white py-3 rounded-lg text-sm font-medium transition-colors"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg text-sm font-medium transition-colors"
               >
                 วิเคราะห์ใหม่
               </button>

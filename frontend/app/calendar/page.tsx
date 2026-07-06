@@ -18,13 +18,13 @@ const TYPE_META: Record<
 > = {
   earnings: {
     label: "งบการเงิน",
-    badge: "bg-sky-900/50 text-sky-300 border border-sky-700",
+    badge: "bg-blue-50 text-blue-600 border border-sky-700",
     Icon: TrendingUp,
-    accent: "bg-sky-500",
+    accent: "bg-blue-600",
   },
   dividend: {
     label: "ปันผล",
-    badge: "bg-emerald-900/50 text-emerald-300 border border-emerald-700",
+    badge: "bg-emerald-50 text-emerald-700 border border-emerald-700",
     Icon: Coins,
     accent: "bg-emerald-500",
   },
@@ -36,7 +36,7 @@ const TYPE_META: Record<
   },
   economic: {
     label: "ตัวเลขเศรษฐกิจ",
-    badge: "bg-amber-900/50 text-amber-300 border border-amber-700",
+    badge: "bg-amber-50 text-amber-700 border border-amber-700",
     Icon: BarChart2,
     accent: "bg-amber-500",
   },
@@ -47,16 +47,16 @@ function countdownChip(days: number) {
   let cls: string;
   if (days <= 0) {
     text = "วันนี้";
-    cls = "bg-red-500/20 text-red-300 border border-red-600/50";
+    cls = "bg-red-500/20 text-red-700 border border-red-600/50";
   } else if (days === 1) {
     text = "พรุ่งนี้";
     cls = "bg-orange-500/20 text-orange-300 border border-orange-600/50";
   } else if (days <= 3) {
     text = `อีก ${days} วัน`;
-    cls = "bg-amber-500/20 text-amber-300 border border-amber-600/50";
+    cls = "bg-amber-500/20 text-amber-700 border border-amber-600/50";
   } else {
     text = `อีก ${days} วัน`;
-    cls = "bg-slate-700/60 text-slate-300 border border-slate-600";
+    cls = "bg-slate-100 text-slate-600 border border-slate-200";
   }
   return <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${cls}`}>{text}</span>;
 }
@@ -117,8 +117,8 @@ export default function CalendarPage() {
     <div className="max-w-5xl mx-auto space-y-8">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <CalendarClock className="w-8 h-8 text-sky-400" />
+          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+            <CalendarClock className="w-8 h-8 text-blue-600" />
             ปฏิทินเหตุการณ์
           </h1>
           <p className="text-slate-400 mt-1">แจ้งเตือนล่วงหน้า: วันประกาศงบ · ปันผล · IPO</p>
@@ -126,7 +126,7 @@ export default function CalendarPage() {
         <button
           onClick={() => handleRefresh(range)}
           disabled={refreshing}
-          className="shrink-0 inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+          className="shrink-0 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
         >
           <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
           รีเฟรช
@@ -135,13 +135,13 @@ export default function CalendarPage() {
 
       {/* range selector + legend */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="inline-flex bg-slate-800 border border-slate-700 rounded-lg p-1">
+        <div className="inline-flex bg-white border border-slate-200 rounded-lg p-1">
           {RANGE_OPTIONS.map((d) => (
             <button
               key={d}
               onClick={() => setRange(d)}
               className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                range === d ? "bg-sky-600 text-white font-medium" : "text-slate-400 hover:text-white"
+                range === d ? "bg-blue-600 text-white font-medium" : "text-slate-400 hover:text-slate-900"
               }`}
             >
               {d} วัน
@@ -161,11 +161,11 @@ export default function CalendarPage() {
       {loading ? (
         <div className="space-y-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="bg-slate-800 border border-slate-700 rounded-xl h-20 animate-pulse" />
+            <div key={i} className="bg-white border border-slate-200 rounded-xl h-20 animate-pulse" />
           ))}
         </div>
       ) : dates.length === 0 ? (
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-10 text-center text-slate-500">
+        <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-500">
           ไม่มีเหตุการณ์ในช่วง {range} วันข้างหน้า — กด &quot;รีเฟรช&quot; เพื่อดึงข้อมูลล่าสุด
         </div>
       ) : (
@@ -173,9 +173,9 @@ export default function CalendarPage() {
           {dates.map((date) => (
             <div key={date}>
               <div className="flex items-center gap-3 mb-3">
-                <h2 className="text-sm font-semibold text-slate-300">{formatDateHeading(date)}</h2>
+                <h2 className="text-sm font-semibold text-slate-600">{formatDateHeading(date)}</h2>
                 <span className="text-xs text-slate-600 font-mono">{date}</span>
-                <div className="flex-1 h-px bg-slate-800" />
+                <div className="flex-1 h-px bg-white" />
               </div>
               <div className="space-y-2">
                 {grouped[date].map((ev, i) => {
@@ -184,17 +184,17 @@ export default function CalendarPage() {
                   return (
                     <div
                       key={`${ev.event_type}-${ev.symbol}-${i}`}
-                      className="relative bg-slate-800 border border-slate-700 rounded-xl p-4 pl-5 flex items-center justify-between gap-4 hover:border-slate-600 transition-colors overflow-hidden"
+                      className="relative bg-white border border-slate-200 rounded-xl p-4 pl-5 flex items-center justify-between gap-4 hover:border-slate-200 transition-colors overflow-hidden"
                     >
                       <span className={`absolute left-0 top-0 h-full w-1 ${meta.accent}`} />
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="bg-slate-750 p-2 rounded-lg shrink-0">
-                          <Icon className="w-4 h-4 text-slate-300" />
+                          <Icon className="w-4 h-4 text-slate-600" />
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             {ev.symbol && (
-                              <span className="text-white font-semibold text-sm">{ev.symbol}</span>
+                              <span className="text-slate-900 font-semibold text-sm">{ev.symbol}</span>
                             )}
                             <span className={`text-[11px] px-2 py-0.5 rounded ${meta.badge}`}>
                               {meta.label}

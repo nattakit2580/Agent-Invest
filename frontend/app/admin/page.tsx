@@ -119,13 +119,13 @@ export default function AdminPage() {
   if (!authed) {
     return (
       <div className="max-w-md mx-auto mt-16">
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-8">
+        <div className="bg-white border border-slate-200 rounded-xl p-8">
           <div className="flex items-center gap-3 mb-6">
-            <div className="bg-sky-900/50 border border-sky-700 rounded-lg p-2">
-              <Lock className="w-5 h-5 text-sky-400" />
+            <div className="bg-blue-50 border border-sky-700 rounded-lg p-2">
+              <Lock className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">Admin</h1>
+              <h1 className="text-xl font-bold text-slate-900">Admin</h1>
               <p className="text-xs text-slate-400">ตั้งค่าโมเดลของแต่ละ Agent</p>
             </div>
           </div>
@@ -136,17 +136,17 @@ export default function AdminPage() {
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleLogin()}
             placeholder="ใส่รหัสผ่านผู้ดูแล"
-            className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-sky-500"
+            className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
           />
           {loginError && (
-            <p className="text-red-400 text-xs mt-2 flex items-center gap-1.5">
+            <p className="text-red-600 text-xs mt-2 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5" /> {loginError}
             </p>
           )}
           <button
             onClick={handleLogin}
             disabled={loggingIn || !password.trim()}
-            className="mt-4 w-full bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-lg py-3 flex items-center justify-center gap-2 transition-colors"
+            className="mt-4 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-500 text-white font-semibold rounded-lg py-3 flex items-center justify-center gap-2 transition-colors"
           >
             {loggingIn ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
             เข้าสู่ระบบ
@@ -161,19 +161,19 @@ export default function AdminPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <SlidersHorizontal className="w-8 h-8 text-sky-400" />
+          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+            <SlidersHorizontal className="w-8 h-8 text-blue-600" />
             ตั้งค่าโมเดล Agent
           </h1>
           <p className="text-slate-400 mt-1">
             เลือก LLM ให้แต่ละ Agent · ค่าเริ่มต้นทั่วระบบ:{" "}
-            <span className="font-mono text-slate-300">{config?.global_default}</span>
+            <span className="font-mono text-slate-600">{config?.global_default}</span>
           </p>
         </div>
         <button
           onClick={() => loadConfig(password)}
           disabled={loading}
-          className="shrink-0 inline-flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-2.5 rounded-lg transition-colors"
+          className="shrink-0 inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 text-sm px-4 py-2.5 rounded-lg transition-colors"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           โหลดใหม่
@@ -181,7 +181,7 @@ export default function AdminPage() {
       </div>
 
       {error && (
-        <div className="bg-red-900/30 border border-red-700 rounded-xl p-3 flex items-center gap-2 text-red-400 text-sm">
+        <div className="bg-red-50 border border-red-700 rounded-xl p-3 flex items-center gap-2 text-red-600 text-sm">
           <AlertCircle className="w-4 h-4" /> {error}
         </div>
       )}
@@ -191,11 +191,11 @@ export default function AdminPage() {
           const f = form[row.agent];
           if (!f) return null;
           return (
-            <div key={row.agent} className="bg-slate-800 border border-slate-700 rounded-xl p-5">
+            <div key={row.agent} className="bg-white border border-slate-200 rounded-xl p-5">
               <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-                <span className="text-white font-semibold">{row.label}</span>
+                <span className="text-slate-900 font-semibold">{row.label}</span>
                 <span className="text-[11px] text-slate-500">
-                  ใช้อยู่: <span className="font-mono text-sky-300">{row.resolved_model}</span>
+                  ใช้อยู่: <span className="font-mono text-blue-600">{row.resolved_model}</span>
                 </span>
               </div>
 
@@ -209,7 +209,7 @@ export default function AdminPage() {
                       if (v === CUSTOM) setRow(row.agent, { custom: true, model: "" });
                       else setRow(row.agent, { custom: false, model: v });
                     }}
-                    className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-sky-500"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
                   >
                     <option value="">(ใช้ค่าเริ่มต้น: {row.env_default || config.global_default})</option>
                     <optgroup label="ฟรี (ไม่มีค่าใช้จ่าย)">
@@ -229,7 +229,7 @@ export default function AdminPage() {
                       value={f.model}
                       onChange={(e) => setRow(row.agent, { model: e.target.value })}
                       placeholder="เช่น provider/model-id"
-                      className="mt-2 w-full bg-slate-900 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-sky-500"
+                      className="mt-2 w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500"
                     />
                   )}
                 </div>
@@ -241,7 +241,7 @@ export default function AdminPage() {
                     onChange={(e) => setRow(row.agent, { temperature: e.target.value })}
                     inputMode="decimal"
                     placeholder="เช่น 0.4"
-                    className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-sky-500"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                   />
                 </div>
                 <div>
@@ -251,7 +251,7 @@ export default function AdminPage() {
                     onChange={(e) => setRow(row.agent, { max_tokens: e.target.value })}
                     inputMode="numeric"
                     placeholder="เช่น 1200"
-                    className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-sky-500"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
@@ -264,7 +264,7 @@ export default function AdminPage() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="w-full bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 text-white font-semibold rounded-lg py-3 flex items-center justify-center gap-2 transition-colors shadow-lg"
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-100 text-white font-semibold rounded-lg py-3 flex items-center justify-center gap-2 transition-colors shadow-lg"
         >
           {saving ? (
             <Loader2 className="w-4 h-4 animate-spin" />
