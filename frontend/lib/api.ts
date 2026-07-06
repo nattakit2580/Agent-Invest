@@ -1,9 +1,21 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 
-// Dev and Render frontend use /api, which Next.js rewrites to BACKEND_URL.
-// Cloudflare/static deployments can set NEXT_PUBLIC_API_URL to call the backend directly.
+// Where to send API calls.
+//  - Explicit NEXT_PUBLIC_API_URL always wins (Cloudflare/static deployments).
+//  - On the deployed Render frontend, call the backend DIRECTLY (CORS is configured).
+//    Analysis can take ~45s, which exceeds the Next.js rewrite-proxy timeout (~30s)
+//    and surfaces as a 500; going direct removes that middle hop.
+//  - Everywhere else (local dev) use "/api", which Next.js rewrites to BACKEND_URL.
+function resolveBaseURL(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  if (typeof window !== "undefined" && window.location.hostname.endsWith(".onrender.com")) {
+    return "https://agent-invest-backend.onrender.com";
+  }
+  return "/api";
+}
+
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "/api",
+  baseURL: resolveBaseURL(),
 });
 
 // Render's free tier spins the backend down after ~15 min idle. The first request
