@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -39,7 +40,9 @@ class KnowledgeDocument(Base):
     title = Column(String(1000), nullable=False)
     content = Column(Text, nullable=True)                     # full extracted text (may be long)
     summary = Column(Text, nullable=True)                     # AI-extracted or abstract
-    symbols = Column(JSON, default=list)                      # ["NVDA", "AMD"]
+    # JSONB on Postgres (required: GIN indexes need jsonb, not plain json).
+    # Plain JSON on SQLite (local dev), since JSONB has no SQLite equivalent.
+    symbols = Column(JSON().with_variant(JSONB, "postgresql"), default=list)  # ["NVDA", "AMD"]
     tags = Column(JSON, default=list)                         # ["semiconductor", "AI"]
     form_type = Column(String(20), nullable=True)             # 10-K, 10-Q, 8-K (SEC only)
     authors = Column(JSON, default=list)                      # arXiv authors
