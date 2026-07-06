@@ -96,10 +96,11 @@ class Orchestrator:
         timeframe: str,
         similar_cases: list[dict] | None = None,
         agent_feedback: dict | None = None,
+        regime: str | None = None,
     ) -> dict:
         """Run the weighted blend + synthesis LLM. Stops before the critic pass so
         callers can stream the synthesis and critic steps separately."""
-        # use dynamic weights from track record if available
+        # use regime-aware weights when available, otherwise fall back to track-record weights
         weights = agent_feedback.get("weights") if agent_feedback else None
         direction, confidence = self._weighted_direction(agent_outputs, weights)
 
@@ -111,13 +112,14 @@ class Orchestrator:
             target_price = round(current_price * (1 - confidence * 0.1), 4)
 
         summaries = "\n".join(
-            f"[{name.upper()}] ({data.get('direction','?')} / conf:{data.get('confidence',0):.2f}): {data.get('summary','')}"
+            f"[{name.upper()}] ({data.get('direction','?')} / conf:{data.get('confidence',0):.2f}): "
+            f"{data.get('summary','')} | trace: {data.get('reasoning_trace','')}"
             for name, data in agent_outputs.items()
-            if name != "_critic"
+            if not name.startswith("_")
         )
         all_key_points = []
         for name, data in agent_outputs.items():
-            if name != "_critic":
+            if not name.startswith("_"):
                 all_key_points.extend(data.get("key_points", [])[:2])
 
         system = (
@@ -138,6 +140,11 @@ class Orchestrator:
         if agent_feedback and agent_feedback.get("prompt_section"):
             track_section = "\n\n" + agent_feedback["prompt_section"]
 
+        # inject regime context (weights + market condition classification)
+        regime_section = ""
+        if agent_feedback and agent_feedback.get("regime_section"):
+            regime_section = "\n\n" + agent_feedback["regime_section"]
+
         user = f"""Synthesize these analysis reports for {symbol} ({timeframe} outlook):
 
 {summaries}
@@ -145,7 +152,7 @@ class Orchestrator:
 KEY POINTS FROM ALL AGENTS:
 {chr(10).join(f'- {p}' for p in all_key_points)}
 
-MARKET DATA: Price={current_price}, Change={market_data.get('price_change_pct')}%{track_section}{similar_section}
+MARKET DATA: Price={current_price}, Change={market_data.get('price_change_pct')}%{regime_section}{track_section}{similar_section}
 
 Return this exact JSON:
 {{
@@ -175,6 +182,7 @@ Return this exact JSON:
             "timeframe": timeframe,
             "synth": synth,
             "weights": weights or DEFAULT_WEIGHTS,
+            "market_regime": regime,
         }
 
     def run_critic(self, symbol: str, core: dict, agent_outputs: dict, market_data: dict) -> dict:
@@ -219,6 +227,7 @@ Return this exact JSON:
             "critic": critic_result,
             "agent_outputs": agent_outputs_with_critic,
             "weights_used": core["weights"],
+            "market_regime": core.get("market_regime"),
         }
 
     def synthesize(
@@ -229,9 +238,10 @@ Return this exact JSON:
         timeframe: str,
         similar_cases: list[dict] | None = None,
         agent_feedback: dict | None = None,
+        regime: str | None = None,
     ) -> dict:
         core = self._synthesize_core(
-            symbol, market_data, agent_outputs, timeframe, similar_cases, agent_feedback
+            symbol, market_data, agent_outputs, timeframe, similar_cases, agent_feedback, regime
         )
         critic_result = self.run_critic(symbol, core, agent_outputs, market_data)
         return self.assemble(core, critic_result, agent_outputs)
@@ -244,6 +254,7 @@ Return this exact JSON:
         timeframe: str = "1w",
         similar_cases: list[dict] | None = None,
         agent_feedback: dict | None = None,
+        regime: str | None = None,
     ) -> dict:
         agent_outputs = self.run_all_agents(symbol, market_data, news)
-        return self.synthesize(symbol, market_data, agent_outputs, timeframe, similar_cases, agent_feedback)
+        return self.synthesize(symbol, market_data, agent_outputs, timeframe, similar_cases, agent_feedback, regime)

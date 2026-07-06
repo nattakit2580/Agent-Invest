@@ -31,7 +31,7 @@ def _build_text_snapshot(symbol: str, market_data: dict, agent_outputs: dict | N
 
 
 def _embed(text_input: str) -> list[float] | None:
-    """Call the configured embeddings provider."""
+    """Call the configured embeddings provider (Jina AI by default, or OpenAI directly)."""
     if not settings.embedding_api_key:
         return None
     try:

@@ -68,6 +68,7 @@ export interface Prediction {
   accuracy_score: number | null;
   compared_at: string | null;
   status: "pending" | "compared";
+  market_regime?: string | null;
 }
 
 export interface AgentOutput {
@@ -75,6 +76,7 @@ export interface AgentOutput {
   confidence: number;
   summary: string;
   key_points: string[];
+  reasoning_trace?: string;
   [key: string]: unknown;
 }
 
@@ -357,3 +359,38 @@ export const updateAdminConfig = (password: string, agents: AgentConfigUpdate[])
       { headers: { "X-Admin-Password": password } }
     )
     .then((r) => r.data);
+
+// ── Deep Research (KG-RAG pipeline) ──
+export interface DeepResearchRequest {
+  symbol: string;
+  timeframe?: string;
+  max_papers?: number;
+  max_filings?: number;
+}
+
+export interface DeepResearchResult extends Prediction {
+  deep_research: {
+    papers_found: number;
+    filings_found: number;
+    new_docs_indexed: number;
+    highlights: string[];
+  };
+  elapsed_seconds: number;
+}
+
+export interface KnowledgeStats {
+  knowledge_docs: Record<string, number>;
+  knowledge_graph: {
+    entities: Record<string, number>;
+    relationships: number;
+  };
+}
+
+export const deepResearch = (req: DeepResearchRequest) =>
+  api.post<DeepResearchResult>("/deep-research", req).then((r) => r.data);
+
+export const getKnowledgeStats = () =>
+  api.get<KnowledgeStats>("/deep-research/knowledge/stats").then((r) => r.data);
+
+export const seedKnowledgeGraph = () =>
+  api.post("/deep-research/knowledge/seed-graph").then((r) => r.data);

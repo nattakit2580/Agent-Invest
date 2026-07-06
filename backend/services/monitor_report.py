@@ -67,6 +67,14 @@ def _count_symbol_mentions(symbol: str, categories: dict[str, list[dict[str, Any
     return count
 
 
+BIAS_TH = {
+    "bullish_watch": "ขาขึ้น 🟢",
+    "risk_watch": "เฝ้าระวัง 🔴",
+    "neutral_watch": "ทรงตัว 🟡",
+    "unavailable": "ข้อมูลไม่พร้อม ⚪",
+}
+
+
 def _watch_signal(market_data: dict[str, Any], news_mentions: int) -> tuple[str, float, list[str]]:
     change = _safe_float(market_data.get("price_change_pct"))
     rsi = market_data.get("rsi_14")
@@ -80,22 +88,22 @@ def _watch_signal(market_data: dict[str, Any], news_mentions: int) -> tuple[str,
     if change >= 2:
         bias_score += 1
         score += 2
-        reasons.append("strong positive momentum")
+        reasons.append("momentum ขาขึ้นแข็งแกร่ง")
     elif change <= -2:
         bias_score -= 1
         score += 2
-        reasons.append("sharp downside move")
+        reasons.append("ราคาดิ่งลงแรง")
 
     if rsi is not None:
         rsi_value = _safe_float(rsi)
         if rsi_value >= 70:
             bias_score -= 0.5
             score += 1.5
-            reasons.append(f"overbought RSI {rsi_value:.1f}")
+            reasons.append(f"RSI overbought {rsi_value:.1f}")
         elif rsi_value <= 35:
             bias_score += 0.5
             score += 1.5
-            reasons.append(f"oversold RSI {rsi_value:.1f}")
+            reasons.append(f"RSI oversold {rsi_value:.1f}")
 
     if macd is not None and macd_signal is not None:
         macd_value = _safe_float(macd)
@@ -103,18 +111,18 @@ def _watch_signal(market_data: dict[str, Any], news_mentions: int) -> tuple[str,
         if macd_value > signal_value:
             bias_score += 0.4
             score += 0.7
-            reasons.append("MACD above signal")
+            reasons.append("MACD อยู่เหนือ signal line")
         elif macd_value < signal_value:
             bias_score -= 0.4
             score += 0.7
-            reasons.append("MACD below signal")
+            reasons.append("MACD อยู่ต่ำกว่า signal line")
 
     if news_mentions:
         score += min(news_mentions, 5) * 0.4
-        reasons.append(f"mentioned in {news_mentions} monitored news item(s)")
+        reasons.append(f"ถูกกล่าวถึงใน {news_mentions} รายการข่าว")
 
     if not reasons:
-        reasons.append("stable price action; wait for fresh catalyst")
+        reasons.append("ราคาทรงตัว รอ catalyst ใหม่")
 
     if bias_score > 0.35:
         bias = "bullish_watch"
@@ -200,25 +208,25 @@ def build_ipo_agenda(categories: dict[str, list[dict[str, Any]]]) -> list[dict[s
 
 def _fallback_brief(categories: dict[str, list[dict[str, Any]]], watchlist: list[dict[str, Any]]) -> dict[str, Any]:
     top_watch = [item for item in watchlist if not item.get("error")][:3]
-    focus = [f"{item['symbol']}: {item.get('bias', 'watch')}" for item in top_watch]
+    focus = [f"{item['symbol']}: {BIAS_TH.get(item.get('bias', ''), item.get('bias', 'watch'))}" for item in top_watch]
     if not focus:
-        focus = ["No reliable market data is available yet."]
+        focus = ["ยังไม่มีข้อมูลตลาดที่น่าเชื่อถือ"]
 
     risks = []
     if categories.get("geopolitic_prediction"):
-        risks.append("Geopolitical headlines may affect risk appetite.")
+        risks.append("พาดหัวข่าวภูมิรัฐศาสตร์อาจกระทบความต้องการรับความเสี่ยง")
     if categories.get("economic_agenda"):
-        risks.append("Upcoming macro data may increase volatility.")
+        risks.append("ข้อมูลมหภาคที่กำลังจะมาถึงอาจเพิ่มความผันผวน")
     if not risks:
-        risks.append("Market liquidity and data availability remain the main near-term risks.")
+        risks.append("สภาพคล่องตลาดและความพร้อมของข้อมูลยังเป็นความเสี่ยงหลักในระยะใกล้")
 
     return {
-        "headline": "Daily monitor generated from market data and categorized news.",
+        "headline": "รายงานประจำวันสร้างจากข้อมูลตลาดและข่าวที่จัดหมวดหมู่",
         "daily_focus": focus,
         "risks": risks[:3],
         "action_items": [
-            "Review high-priority watchlist names before market open.",
-            "Check dates and primary sources before acting on IPO or economic agenda items.",
+            "ตรวจสอบ Watchlist ที่มีความสำคัญสูงก่อนตลาดเปิด",
+            "ตรวจสอบวันที่และแหล่งข้อมูลหลักก่อนดำเนินการตาม IPO หรือวาระเศรษฐกิจ",
         ],
     }
 
@@ -269,19 +277,20 @@ def _generate_ai_brief(
 
     system = (
         "You are an institutional markets editor. Return ONLY valid JSON, no markdown. "
+        "Write ALL text fields (headline, daily_focus, risks, action_items) in Thai language. "
         "Be concise and do not provide personalized financial advice."
     )
-    user = f"""Create a concise daily Telegram brief from this monitor data.
+    user = f"""สร้างสรุปรายงานตลาดประจำวันสำหรับ Telegram จากข้อมูลด้านล่าง
 
 DATA:
 {json.dumps({"categories": compact_categories, "watchlist": compact_watchlist, "economic_indicators": compact_economics}, ensure_ascii=False)}
 
-Return this exact JSON:
+Return this exact JSON (all text values must be in Thai):
 {{
-  "headline": "<one sentence>",
-  "daily_focus": ["<bullet>", "<bullet>", "<bullet>"],
-  "risks": ["<risk>", "<risk>"],
-  "action_items": ["<action>", "<action>"]
+  "headline": "<หนึ่งประโยคสรุปภาพรวมตลาดวันนี้>",
+  "daily_focus": ["<ประเด็นที่ 1>", "<ประเด็นที่ 2>", "<ประเด็นที่ 3>"],
+  "risks": ["<ความเสี่ยง 1>", "<ความเสี่ยง 2>"],
+  "action_items": ["<สิ่งที่ควรทำ 1>", "<สิ่งที่ควรทำ 2>"]
 }}"""
 
     try:
@@ -376,83 +385,86 @@ def render_daily_monitor_message(report: dict[str, Any]) -> str:
     generated_at = report["generated_at"]
 
     lines: list[str] = [
-        "Agent Invest Daily Monitor",
-        f"Generated: {generated_at}",
+        "🗓 ภาพรวมตลาดประจำวัน — Agent Invest",
+        f"สร้างเมื่อ: {generated_at}",
         "",
-        "Executive view",
-        f"- {brief.get('headline', 'Daily monitor generated.')}",
+        "── สรุปภาพรวม ──",
+        f"• {brief.get('headline', 'รายงานประจำวันสร้างจากข้อมูลตลาด')}",
     ]
 
     for item in brief.get("daily_focus", [])[:4]:
-        lines.append(f"- {item}")
+        lines.append(f"• {item}")
 
     settings = get_settings()
     watchlist_limit = settings.telegram_private_report_max_assets
-    lines.extend(["", "Watchlist assets"])
+    lines.extend(["", "── Watchlist ──"])
     for item in watchlist[:watchlist_limit]:
         symbol = item.get("symbol", "-")
-        bias = item.get("bias", "watch")
+        bias_raw = item.get("bias", "watch")
+        bias = BIAS_TH.get(bias_raw, bias_raw)
         price = _fmt_price(item.get("price"))
         change = _fmt_pct(item.get("price_change_pct")) if item.get("price_change_pct") is not None else "n/a"
         rsi = item.get("rsi_14")
         rsi_text = f" | RSI {rsi}" if rsi is not None else ""
         reasons = "; ".join(item.get("reasons", [])[:2])
-        lines.append(f"- {symbol}: {price} ({change}) | {bias}{rsi_text} | {reasons}")
+        lines.append(f"• {symbol}: {price} ({change}) | {bias}{rsi_text}")
+        if reasons:
+            lines.append(f"   {reasons}")
 
-    lines.extend(["", "Upcoming calendar (advance alerts)"])
+    lines.extend(["", "── ปฏิทินล่วงหน้า (แจ้งเตือน) ──"])
     upcoming_events = report.get("upcoming_events", [])
     if upcoming_events:
         lines.extend(_format_calendar_event(item) for item in upcoming_events[:12])
     else:
-        lines.append("- No upcoming earnings / dividend / IPO events in the configured window.")
+        lines.append("• ไม่มีกำหนดการ earnings / ปันผล / IPO ในช่วงที่ตั้งค่าไว้")
 
-    lines.extend(["", "IPO agenda"])
+    lines.extend(["", "── IPO ที่น่าจับตา ──"])
     if ipo_agenda:
         lines.extend(_format_ipo(item) for item in ipo_agenda[:6])
     else:
-        lines.append("- No IPO agenda detected from configured sources.")
+        lines.append("• ไม่พบ IPO agenda จากแหล่งข้อมูลที่ตั้งค่าไว้")
 
-    lines.extend(["", "Economic indicators (latest actual)"])
+    lines.extend(["", "── ตัวเลขเศรษฐกิจ (ล่าสุด) ──"])
     economic_indicators = report.get("economic_indicators", [])
     if economic_indicators:
         lines.extend(_format_indicator(item) for item in economic_indicators)
     else:
-        lines.append("- No economic indicator data available (set FRED_API_KEY to enable).")
+        lines.append("• ไม่มีข้อมูลตัวเลขเศรษฐกิจ (ตั้งค่า FRED_API_KEY เพื่อเปิดใช้งาน)")
 
-    lines.extend(["", "Economic agenda"])
+    lines.extend(["", "── วาระเศรษฐกิจ ──"])
     economic_items = categories.get("economic_agenda", [])
     if economic_items:
         lines.extend(_format_article(item) for item in economic_items[:5])
     else:
-        lines.append("- No economic agenda item detected from configured sources.")
+        lines.append("• ไม่พบวาระเศรษฐกิจจากแหล่งข้อมูลที่ตั้งค่าไว้")
 
-    lines.extend(["", "Geopolitic prediction"])
+    lines.extend(["", "── ความเสี่ยงภูมิรัฐศาสตร์ ──"])
     geopolitic_items = categories.get("geopolitic_prediction", [])
     if geopolitic_items:
         lines.extend(_format_article(item) for item in geopolitic_items[:5])
     else:
-        lines.append("- No geopolitic risk item detected from configured sources.")
+        lines.append("• ไม่พบรายการความเสี่ยงภูมิรัฐศาสตร์จากแหล่งข้อมูลที่ตั้งค่าไว้")
 
-    lines.extend(["", "News to watch"])
+    lines.extend(["", "── ข่าวที่น่าติดตาม ──"])
     news_items = categories.get("noteworthy_news", [])
     if news_items:
         lines.extend(_format_article(item) for item in news_items[:5])
     else:
-        lines.append("- No noteworthy news item detected from configured sources.")
+        lines.append("• ไม่พบข่าวสำคัญจากแหล่งข้อมูลที่ตั้งค่าไว้")
 
     risks = brief.get("risks", [])
     if risks:
-        lines.extend(["", "Risk notes"])
-        lines.extend(f"- {risk}" for risk in risks[:4])
+        lines.extend(["", "⚠️ ความเสี่ยง"])
+        lines.extend(f"• {risk}" for risk in risks[:4])
 
     actions = brief.get("action_items", [])
     if actions:
-        lines.extend(["", "Action checklist"])
-        lines.extend(f"- {action}" for action in actions[:4])
+        lines.extend(["", "📋 สิ่งที่ควรทำวันนี้"])
+        lines.extend(f"• {action}" for action in actions[:4])
 
     lines.extend([
         "",
-        "Disclaimer: This is automated market monitoring, not financial advice. Verify primary sources before trading.",
+        "⚠️ ข้อมูลนี้สร้างโดยระบบอัตโนมัติ ไม่ใช่คำแนะนำทางการเงิน กรุณาตรวจสอบแหล่งข้อมูลก่อนตัดสินใจ",
     ])
     return "\n".join(lines)
 
@@ -471,38 +483,39 @@ def render_public_monitor_message(
     brief = report["brief"]
 
     lines: list[str] = [
-        "Agent Invest Community Update",
-        f"Generated: {report['generated_at']}",
+        "🗓 อัปเดตตลาดประจำวัน — Agent Invest",
+        f"สร้างเมื่อ: {report['generated_at']}",
         "",
-        "Market focus",
-        f"- {brief.get('headline', 'Daily monitor generated.')}",
+        "── โฟกัสตลาดวันนี้ ──",
+        f"• {brief.get('headline', 'รายงานประจำวันสร้างจากข้อมูลตลาด')}",
     ]
 
-    lines.extend(["", "Public watchlist snapshot"])
+    lines.extend(["", "── ภาพรวม Watchlist ──"])
     for item in watchlist[:watchlist_limit]:
         symbol = item.get("symbol", "-")
-        bias = item.get("bias", "watch")
+        bias_raw = item.get("bias", "watch")
+        bias = BIAS_TH.get(bias_raw, bias_raw)
         price = _fmt_price(item.get("price"))
         change = _fmt_pct(item.get("price_change_pct")) if item.get("price_change_pct") is not None else "n/a"
-        lines.append(f"- {symbol}: {price} ({change}) | {bias}")
+        lines.append(f"• {symbol}: {price} ({change}) | {bias}")
 
-    lines.extend(["", "News to watch"])
+    lines.extend(["", "── ข่าวที่น่าติดตาม ──"])
     news_items = categories.get("noteworthy_news", [])
     if news_items:
         lines.extend(_format_article(item) for item in news_items[:news_limit])
     else:
-        lines.append("- No noteworthy news item detected from configured sources.")
+        lines.append("• ไม่พบข่าวสำคัญจากแหล่งข้อมูลที่ตั้งค่าไว้")
 
-    lines.extend(["", "IPO preview"])
+    lines.extend(["", "── IPO ที่น่าจับตา ──"])
     if ipo_agenda:
         lines.extend(_format_ipo(item) for item in ipo_agenda[: max(1, min(news_limit, 2))])
     else:
-        lines.append("- No IPO agenda detected from configured sources.")
+        lines.append("• ไม่พบ IPO agenda จากแหล่งข้อมูลที่ตั้งค่าไว้")
 
     lines.extend([
         "",
-        "Premium feed includes the full watchlist, IPO agenda, economic agenda, and risk notes.",
-        "Disclaimer: This is automated market monitoring, not financial advice.",
+        "สมาชิก Premium รับ Watchlist เต็ม, IPO agenda, วาระเศรษฐกิจ และการวิเคราะห์เพิ่มเติม",
+        "⚠️ ข้อมูลนี้สร้างโดยระบบอัตโนมัติ ไม่ใช่คำแนะนำทางการเงิน",
     ])
     return "\n".join(lines)
 
@@ -531,7 +544,7 @@ def build_daily_monitor_report(
     brief = _generate_ai_brief(categories, watchlist, economic_indicators, use_ai=use_ai)
 
     report = {
-        "title": "Agent Invest Daily Monitor",
+        "title": "ภาพรวมตลาดประจำวัน — Agent Invest",
         "report_date": now.date().isoformat(),
         "generated_at": now.strftime("%Y-%m-%d %H:%M %Z"),
         "categories": categories,

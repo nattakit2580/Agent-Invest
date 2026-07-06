@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
@@ -98,6 +99,73 @@ class TelegramClient:
             raise TelegramSendError(f"Telegram {method} failed: {description}")
         return body
 
+    def send_message_with_keyboard(
+        self,
+        text: str,
+        *,
+        chat_id: str | None = None,
+        keyboard: list[list[dict[str, Any]]] | None = None,
+        parse_mode: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a single message with an optional inline keyboard."""
+        target = chat_id or self.channel_id
+        if not self.bot_configured or not target:
+            raise TelegramNotConfiguredError("Bot token and chat id required.")
+        payload: dict[str, Any] = {
+            "chat_id": target,
+            "text": text[:3900],
+            "disable_web_page_preview": True,
+        }
+        if keyboard:
+            payload["reply_markup"] = {"inline_keyboard": keyboard}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        return self._request("sendMessage", payload).get("result", {})
+
+    def send_photo(
+        self,
+        photo_bytes: bytes,
+        *,
+        chat_id: str | None = None,
+        caption: str | None = None,
+        keyboard: list[list[dict[str, Any]]] | None = None,
+    ) -> dict[str, Any]:
+        """Send a photo via multipart/form-data (sendPhoto)."""
+        import json as _json
+        target = chat_id or self.channel_id
+        if not self.bot_configured or not target:
+            raise TelegramNotConfiguredError("Bot token and chat id required.")
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendPhoto"
+        data: dict[str, str] = {"chat_id": str(target)}
+        if caption:
+            data["caption"] = caption[:1024]
+        if keyboard:
+            data["reply_markup"] = _json.dumps({"inline_keyboard": keyboard})
+        resp = requests.post(
+            url,
+            data=data,
+            files={"photo": ("chart.png", photo_bytes, "image/png")},
+            timeout=30,
+        )
+        try:
+            body = resp.json()
+        except ValueError:
+            body = {"description": resp.text[:500]}
+        if resp.status_code >= 400 or not body.get("ok", False):
+            raise TelegramSendError(f"sendPhoto failed: {body.get('description', '')}")
+        return body.get("result", {})
+
+    def answer_callback_query(
+        self,
+        callback_query_id: str,
+        text: str = "",
+    ) -> dict[str, Any]:
+        """Acknowledge an inline keyboard button press."""
+        return self._request("answerCallbackQuery", {
+            "callback_query_id": callback_query_id,
+            "text": text[:200],
+        })
+
     def send_message(
         self,
         text: str,
@@ -128,6 +196,19 @@ class TelegramClient:
             results.append(self._request("sendMessage", payload).get("result", {}))
         return results
 
+    @classmethod
+    def all_configured_bots(cls) -> list["TelegramClient"]:
+        """Return list of all configured bots (bot1 + bot2 if set)."""
+        settings = get_settings()
+        bots = []
+        if settings.telegram_bot_token:
+            bots.append(cls(bot_token=settings.telegram_bot_token,
+                            channel_id=settings.telegram_channel_id))
+        if settings.telegram_bot2_token and settings.telegram_bot2_channel_id:
+            bots.append(cls(bot_token=settings.telegram_bot2_token,
+                            channel_id=settings.telegram_bot2_channel_id))
+        return bots
+
     def set_webhook(
         self,
         webhook_url: str,
@@ -138,7 +219,7 @@ class TelegramClient:
         payload: dict[str, Any] = {
             "url": webhook_url,
             "drop_pending_updates": drop_pending_updates,
-            "allowed_updates": ["message", "edited_message", "channel_post"],
+            "allowed_updates": ["message", "edited_message", "channel_post", "callback_query"],
         }
         if secret_token:
             payload["secret_token"] = secret_token
@@ -153,3 +234,48 @@ class TelegramClient:
 
     def get_webhook_info(self) -> dict[str, Any]:
         return self._request("getWebhookInfo", timeout=20)
+
+
+def broadcast_parallel(
+    message: str,
+    *,
+    parse_mode: str | None = None,
+    extra_targets: list[tuple[str, str]] | None = None,
+) -> dict[str, str]:
+    """
+    Fire-and-forget: ส่งจาก bot1 (+ extra_targets ถ้ามี) พร้อมกัน ไม่ log DB
+
+    bot2 ไม่รวมอัตโนมัติ — จัดการแยกผ่าน _log_and_send_bot2 ในฝั่งที่ต้องการ log
+
+    Returns dict: {label: "ok" | error_message}
+    """
+    settings = get_settings()
+
+    targets: list[tuple[str, str, str]] = []  # (label, token, chat_id)
+
+    if settings.telegram_bot_token and settings.telegram_channel_id:
+        targets.append(("bot1", settings.telegram_bot_token, settings.telegram_channel_id))
+
+    for i, (token, chat_id) in enumerate(extra_targets or [], start=2):
+        targets.append((f"extra{i}", token, chat_id))
+
+    if not targets:
+        return {}
+
+    def _send(label: str, token: str, chat_id: str) -> tuple[str, str]:
+        try:
+            client = TelegramClient(bot_token=token, channel_id=chat_id)
+            client.send_message(message, parse_mode=parse_mode)
+            return label, "ok"
+        except Exception as e:
+            return label, str(e)
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(targets)) as executor:
+        futures = {executor.submit(_send, label, token, chat_id): label
+                   for label, token, chat_id in targets}
+        for future in as_completed(futures):
+            label, status = future.result()
+            results[label] = status
+
+    return results

@@ -23,33 +23,33 @@ export default function ExportPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-          <Download className="w-8 h-8 text-sky-400" />
+        <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+          <Download className="w-8 h-8 text-blue-600" />
           Export รายงาน
         </h1>
-        <p className="text-slate-400 mt-1">ดาวน์โหลดผลการวิเคราะห์และความแม่นยำ</p>
+        <p className="text-slate-500 mt-1">ดาวน์โหลดผลการวิเคราะห์และความแม่นยำ</p>
       </div>
 
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-5">
-        <h2 className="text-white font-semibold">กรองข้อมูล (ไม่บังคับ)</h2>
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-5">
+        <h2 className="text-slate-900 font-semibold">กรองข้อมูล (ไม่บังคับ)</h2>
 
         <div className="space-y-3">
           <div>
-            <label className="text-slate-400 text-sm block mb-1">Symbol</label>
+            <label className="text-slate-500 text-sm block mb-1">Symbol</label>
             <input
               value={filter.symbol}
               onChange={(e) => setFilter((f) => ({ ...f, symbol: e.target.value }))}
               placeholder="เช่น AAPL, BTC-USD"
-              className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-sky-500"
+              className="w-full bg-white border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 placeholder-slate-400"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-slate-400 text-sm block mb-1">Timeframe</label>
+              <label className="text-slate-500 text-sm block mb-1">Timeframe</label>
               <select
                 value={filter.timeframe}
                 onChange={(e) => setFilter((f) => ({ ...f, timeframe: e.target.value }))}
-                className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+                className="w-full bg-white border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 text-sm focus:outline-none"
               >
                 <option value="">ทั้งหมด</option>
                 <option value="1d">1 วัน</option>
@@ -59,11 +59,11 @@ export default function ExportPage() {
               </select>
             </div>
             <div>
-              <label className="text-slate-400 text-sm block mb-1">Status</label>
+              <label className="text-slate-500 text-sm block mb-1">Status</label>
               <select
                 value={filter.status}
                 onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value }))}
-                className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+                className="w-full bg-white border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 text-sm focus:outline-none"
               >
                 <option value="">ทั้งหมด</option>
                 <option value="pending">รอเทียบผล</option>
@@ -76,30 +76,30 @@ export default function ExportPage() {
         <div className="grid grid-cols-2 gap-4 pt-2">
           <button
             onClick={() => handleDownload("csv")}
-            className="flex items-center justify-center gap-3 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white rounded-xl py-4 transition-colors"
+            className="flex items-center justify-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 rounded-2xl py-4 transition-colors shadow-sm"
           >
-            <FileText className="w-6 h-6 text-sky-400" />
+            <FileText className="w-6 h-6 text-blue-600" />
             <div className="text-left">
               <div className="font-semibold">CSV</div>
-              <div className="text-xs text-slate-400">เปิดใน Excel ได้</div>
+              <div className="text-xs text-slate-500">เปิดใน Excel ได้</div>
             </div>
           </button>
           <button
             onClick={() => handleDownload("excel")}
-            className="flex items-center justify-center gap-3 bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-700 text-white rounded-xl py-4 transition-colors"
+            className="flex items-center justify-center gap-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-2xl py-4 transition-colors"
           >
-            <FileSpreadsheet className="w-6 h-6 text-emerald-400" />
+            <FileSpreadsheet className="w-6 h-6 text-emerald-600" />
             <div className="text-left">
               <div className="font-semibold">Excel (.xlsx)</div>
-              <div className="text-xs text-slate-400">รวม Accuracy Summary</div>
+              <div className="text-xs text-emerald-600">รวม Accuracy Summary</div>
             </div>
           </button>
         </div>
       </div>
 
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-        <h3 className="text-slate-300 font-medium mb-3">ข้อมูลที่ได้รับใน Report</h3>
-        <ul className="space-y-2 text-sm text-slate-400">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+        <h3 className="text-slate-700 font-medium mb-3">ข้อมูลที่ได้รับใน Report</h3>
+        <ul className="space-y-2 text-sm text-slate-500">
           {[
             "Symbol, Timeframe, Created Date",
             "AI Direction (bullish/bearish/neutral)",
@@ -111,7 +111,7 @@ export default function ExportPage() {
             "Sheet แยก: Accuracy Summary ต่อ Symbol (Excel)",
           ].map((item, i) => (
             <li key={i} className="flex items-center gap-2">
-              <span className="text-sky-500 text-xs">✓</span> {item}
+              <span className="text-blue-600 text-xs">✓</span> {item}
             </li>
           ))}
         </ul>

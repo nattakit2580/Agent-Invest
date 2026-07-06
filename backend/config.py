@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     database_url: str = "postgresql://agent:secret@localhost:5432/agent_invest"
     news_api_key: str = ""
+    alpha_vantage_api_key: str = ""          # https://www.alphavantage.co/support/#api-key (free 25 req/day)
+    finnhub_api_key: str = ""                # https://finnhub.io (free 60 calls/min)
     frontend_url: str = "http://localhost:3000"
     # Extra allowed CORS origins (comma-separated), e.g. your Cloudflare Workers URL.
     cors_allow_origins: str = ""
@@ -20,6 +22,9 @@ class Settings(BaseSettings):
     telegram_paid_chat_id: str = ""
     telegram_webhook_secret_token: str = ""
     telegram_admin_token: str = ""
+    # Bot 2 — ส่งขนานกับ bot 1
+    telegram_bot2_token: str = ""
+    telegram_bot2_channel_id: str = ""
     telegram_daily_report_enabled: bool = False
     telegram_community_report_enabled: bool = False
     telegram_paid_report_enabled: bool = False
@@ -55,6 +60,7 @@ class Settings(BaseSettings):
     # Per-agent model overrides. Blank means use openrouter_model.
     # These are the env-level defaults; the admin page can override them at
     # runtime (stored in the agent_settings table, takes precedence over these).
+    # Tier แนะนำ: news/sentiment=fast, fundamental/technical=medium, synthesis/critic=best
     news_agent_model: str = ""
     sentiment_agent_model: str = ""
     fundamental_agent_model: str = ""
@@ -86,8 +92,9 @@ class Settings(BaseSettings):
     rag_enabled: bool = True
     rag_top_k: int = 5
     rag_min_score: float = 0.0
-    # Embeddings use a separate provider because OpenRouter does not expose
-    # a compatible /embeddings endpoint for this flow.
+    # Embedding provider — separate from OpenRouter (OpenRouter ไม่รองรับ /embeddings).
+    # Default: Jina AI (free 1M tokens/month) — https://jina.ai/?sui=apikey
+    # Alternative: OpenAI direct — base_url=https://api.openai.com/v1, model=text-embedding-3-small, dim=1536
     embedding_api_key: str = ""
     embedding_base_url: str = "https://api.jina.ai/v1"
     embedding_model: str = "jina-embeddings-v2-base-en"

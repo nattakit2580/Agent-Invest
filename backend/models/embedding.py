@@ -23,7 +23,7 @@ def _utcnow():
 
 from config import get_settings
 
-EMBEDDING_DIM = get_settings().embedding_dim
+EMBEDDING_DIM = get_settings().embedding_dim  # Jina=768, OpenAI=1536
 
 
 class PredictionEmbedding(Base):

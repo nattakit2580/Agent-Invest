@@ -33,3 +33,4 @@ class EvaluationResult(Base):
 
     # composite (denorm from Prediction.accuracy_score for fast querying)
     total_score = Column(Float, nullable=False)
+    market_regime = Column(String(20), nullable=True)        # copied from Prediction at eval time

@@ -6,8 +6,11 @@ class TechnicalAgent(BaseAgent):
 
     def analyze(self, symbol: str, market_data: dict, news: list[dict]) -> dict:
         system = (
-            "You are a technical analysis expert. Analyze chart indicators and return ONLY valid JSON. "
-            "No markdown, no explanation outside JSON. Write all text fields (summary, key_points) in Thai language. Keep JSON keys, direction/trend/signal enum values, and numbers in English."
+            "You are a technical analysis expert using the ReAct reasoning framework. "
+            "Think step by step before reaching your conclusion, then output JSON. "
+            "Write all Thai text fields (summary, key_points, reasoning_trace) in Thai. "
+            "Keep JSON keys, direction/trend/signal enum values, and numbers in English. "
+            "In your thinking steps, use only plain text — do NOT use curly braces {{ }} until the final JSON."
         )
 
         indicators = {
@@ -31,38 +34,48 @@ class TechnicalAgent(BaseAgent):
             prices = [h["close"] for h in history[-5:]]
             price_trend = f"Last 5 days: {' -> '.join(str(p) for p in prices)}"
 
-        user = f"""Perform technical analysis for {symbol}.
+        user = f"""Perform technical analysis for {symbol} using the ReAct framework:
 
 TECHNICAL INDICATORS:
 {chr(10).join(f'- {k}: {v}' for k, v in indicators.items() if v is not None)}
 
 PRICE TREND:
-{price_trend}
+{price_trend or '(no history)'}
 
-Return this exact JSON structure:
+Follow these reasoning steps before outputting JSON:
+
+1. READ — State exact values for RSI, MACD position, and SMA crossover status
+2. INTERPRET — What does each indicator say individually? (overbought? bullish cross? trend direction?)
+3. ALIGN or CONFLICT — Do indicators agree with each other, or are there contradictions?
+4. CONCLUDE — What is the dominant technical signal and how confident are you?
+
+After completing all 4 steps above, output this JSON as the final block:
 {{
   "direction": "bullish" | "bearish" | "neutral",
   "confidence": <float 0.0-1.0>,
-  "summary": "<2-3 sentence technical assessment>",
-  "key_points": ["<point 1>", "<point 2>", "<point 3>"],
+  "summary": "<2-3 sentence Thai technical assessment>",
+  "key_points": ["<Thai point 1>", "<Thai point 2>", "<Thai point 3>"],
   "trend": "uptrend" | "downtrend" | "sideways",
   "support_level": <float or null>,
   "resistance_level": <float or null>,
   "rsi_signal": "overbought" | "oversold" | "neutral",
-  "macd_signal": "bullish_crossover" | "bearish_crossover" | "neutral"
+  "macd_signal": "bullish_crossover" | "bearish_crossover" | "neutral",
+  "reasoning_trace": "<1-2 sentence Thai explanation of WHY this direction was chosen>"
 }}"""
 
         try:
-            result = self._parse_json(self._call_llm(system, user))
+            result = self._parse_json(self._call_llm(system, user, max_tokens=1500))
             result.setdefault("direction", "neutral")
             result.setdefault("confidence", 0.5)
             result.setdefault("summary", "")
             result.setdefault("key_points", [])
+            result.setdefault("reasoning_trace", "")
             return result
         except Exception as e:
             return {
                 "direction": "neutral",
                 "confidence": 0.3,
-                "summary": f"Technical analysis failed: {str(e)}",
+                "summary": f"���ิเคราะห์ technical ���ม่สำเร็จ: {str(e)}",
                 "key_points": [],
+                "reasoning_trace": "",
             }

@@ -11,7 +11,7 @@ from fetchers.news_fetcher import fetch_all_news
 from fetchers.economic_fetcher import fetch_economic_indicators
 from fetchers.calendar_fetcher import refresh_calendar_events
 from services.monitor_report import build_daily_monitor_report, render_public_monitor_message
-from services.telegram_client import TelegramClient, TelegramSendError
+from services.telegram_client import TelegramClient, TelegramSendError, broadcast_parallel
 from utils.accuracy import calc_direction_from_prices, calc_accuracy_score, build_evaluation
 from config import get_settings
 
@@ -46,8 +46,9 @@ def auto_compare_due_predictions():
             p.compared_at = now
             p.status = "compared"
 
-            # save evaluation breakdown
+            # save evaluation breakdown (copy market_regime from prediction)
             eval_data = build_evaluation(p, actual_price)
+            eval_data["market_regime"] = p.market_regime
             existing = db.query(EvaluationResult).filter(
                 EvaluationResult.prediction_id == p.id
             ).first()
@@ -171,11 +172,11 @@ def auto_analyze_watchlist():
     from agents.orchestrator import Orchestrator
     from services import rag as rag_service
     from services.agent_feedback import get_agent_feedback
+    from services.market_regime import detect_regime
     orchestrator = Orchestrator()
 
     db: Session = SessionLocal()
     try:
-        agent_fb = get_agent_feedback(db)
         for symbol in symbols:
             try:
                 # skip if a pending prediction already exists for this symbol + timeframe
@@ -192,8 +193,10 @@ def auto_analyze_watchlist():
 
                 market_data = fetch_market_data(symbol)
                 news = fetch_all_news(symbol)
+                regime = detect_regime(market_data, news)
                 similar_cases = rag_service.get_similar_cases(symbol, market_data, None, db)
-                result = orchestrator.analyze(symbol, market_data, news, settings.auto_analyze_timeframe, similar_cases, agent_fb)
+                agent_fb = get_agent_feedback(db, regime=regime)
+                result = orchestrator.analyze(symbol, market_data, news, settings.auto_analyze_timeframe, similar_cases, agent_fb, regime=regime)
 
                 prediction = Prediction(
                     symbol=symbol,
@@ -205,6 +208,7 @@ def auto_analyze_watchlist():
                     reasoning=result["reasoning"],
                     agent_outputs=result["agent_outputs"],
                     status="pending",
+                    market_regime=result.get("market_regime"),
                 )
                 db.add(prediction)
                 db.commit()
@@ -226,19 +230,19 @@ def _telegram_reporting_enabled() -> bool:
     ])
 
 
-def _send_report_to_chat(
-    db: Session,
-    client: TelegramClient,
-    report: dict,
-    *,
-    chat_id: str,
-    report_type: str,
-    message: str,
-) -> None:
+def _log_and_send_bot2(report: dict, message: str, db: Session) -> None:
+    """Bot 2 — ส่งพร้อม log ลง DB (MonitorReport)."""
+    if not settings.telegram_bot2_token or not settings.telegram_bot2_channel_id:
+        return
+
+    client = TelegramClient(
+        bot_token=settings.telegram_bot2_token,
+        channel_id=settings.telegram_bot2_channel_id,
+    )
     row = MonitorReport(
         report_date=report["report_date"],
-        report_type=report_type,
-        channel_id=chat_id,
+        report_type="bot2_monitor",
+        channel_id=settings.telegram_bot2_channel_id,
         title=report["title"],
         categories=report["categories"],
         watchlist=report["watchlist"],
@@ -251,18 +255,14 @@ def _send_report_to_chat(
     db.refresh(row)
 
     try:
-        client.send_message(message, chat_id=chat_id)
+        client.send_message(message)
         row.status = "sent"
         row.sent_at = datetime.now(timezone.utc)
         row.error = None
-    except TelegramSendError as e:
+    except (TelegramSendError, Exception) as e:
         row.status = "failed"
         row.error = str(e)
-        print(f"[Scheduler] {report_type} send error: {e}")
-    except Exception as e:
-        row.status = "failed"
-        row.error = str(e)
-        print(f"[Scheduler] {report_type} error: {e}")
+        print(f"[Scheduler] bot2 send error: {e}")
     finally:
         db.commit()
 
@@ -270,37 +270,24 @@ def _send_report_to_chat(
 def send_daily_telegram_monitor():
     if not _telegram_reporting_enabled():
         return
-
-    client = TelegramClient()
-    if not client.bot_configured:
+    if not settings.telegram_bot_token:
         print("[Scheduler] telegram monitor skipped: TELEGRAM_BOT_TOKEN is not configured")
-        return
-
-    targets: list[tuple[str, str, bool]] = []
-    if settings.telegram_daily_report_enabled and settings.telegram_channel_id:
-        targets.append((settings.telegram_channel_id, "daily_monitor", False))
-    if settings.telegram_community_report_enabled and settings.telegram_community_chat_id:
-        targets.append((settings.telegram_community_chat_id, "community_monitor", True))
-    if settings.telegram_paid_report_enabled and settings.telegram_paid_chat_id:
-        targets.append((settings.telegram_paid_chat_id, "paid_monitor", False))
-
-    if not targets:
-        print("[Scheduler] telegram monitor skipped: no target chat ids configured")
         return
 
     db: Session = SessionLocal()
     try:
         report = build_daily_monitor_report()
-        for chat_id, report_type, public_preview in targets:
-            message = render_public_monitor_message(report) if public_preview else report["message"]
-            _send_report_to_chat(
-                db,
-                client,
-                report,
-                chat_id=chat_id,
-                report_type=report_type,
-                message=message,
-            )
+        message = report["message"]
+
+        # Bot 1 — fire-and-forget (ไม่ log DB)
+        results = broadcast_parallel(message, extra_targets=[])
+        for label, status in results.items():
+            icon = "✓" if status == "ok" else "✗"
+            print(f"[Scheduler] {icon} {label} (fire-and-forget): {status}")
+
+        # Bot 2 — log ลง DB
+        _log_and_send_bot2(report, message, db)
+
     except Exception as e:
         print(f"[Scheduler] telegram monitor error: {e}")
     finally:

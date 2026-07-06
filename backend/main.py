@@ -12,6 +12,7 @@ from api.calendar import router as calendar_router
 from api.rag import router as rag_router
 from api.dataset import router as dataset_router
 from api.admin import router as admin_router
+from api.deep_research import router as deep_research_router
 from tasks.scheduler import create_scheduler
 from config import get_settings
 
@@ -60,6 +61,7 @@ app.include_router(calendar_router)
 app.include_router(rag_router)
 app.include_router(dataset_router)
 app.include_router(admin_router)
+app.include_router(deep_research_router)
 
 
 @app.get("/")
