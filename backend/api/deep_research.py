@@ -17,7 +17,7 @@ from services.knowledge_rag import count_documents
 from services.kg_rag import get_graph_context, seed_watchlist, get_graph_stats
 from services import rag as rag_service
 
-router = APIRouter(prefix="/api", tags=["deep-research"])
+router = APIRouter(tags=["deep-research"])
 
 
 class DeepResearchRequest(BaseModel):
