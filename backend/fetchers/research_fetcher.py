@@ -249,14 +249,17 @@ def fetch_research_for_symbol(
     )
 
     # Pass 2: domain/technology papers (all categories)
-    domain_query = human_name
-    if sector:
-        domain_query = f"{human_name} {sector}"
-    domain_papers = fetch_arxiv_papers(
-        domain_query,
-        max_results=max_papers - len(finance_papers),
-        category="",
-    )
+    remaining = max_papers - len(finance_papers)
+    domain_papers = []
+    if remaining > 0:
+        domain_query = human_name
+        if sector:
+            domain_query = f"{human_name} {sector}"
+        domain_papers = fetch_arxiv_papers(
+            domain_query,
+            max_results=remaining,
+            category="",
+        )
 
     # deduplicate by source_id
     seen: set[str] = {p["source_id"] for p in finance_papers}

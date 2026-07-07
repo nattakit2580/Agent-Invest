@@ -50,3 +50,16 @@ def init_db():
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
     Base.metadata.create_all(bind=engine)
+
+    # create_all() only creates missing tables — it never alters existing ones.
+    # These columns were added to tables that already existed in production
+    # (predictions, evaluation_results), so patch them in explicitly.
+    if engine.url.get_backend_name().startswith("postgresql"):
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE predictions ADD COLUMN IF NOT EXISTS market_regime VARCHAR(20)"
+            ))
+            conn.execute(text(
+                "ALTER TABLE evaluation_results ADD COLUMN IF NOT EXISTS market_regime VARCHAR(20)"
+            ))
