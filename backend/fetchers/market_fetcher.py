@@ -1,11 +1,24 @@
+import time
+import threading
 import yfinance as yf
 import pandas as pd
 import ta
 from typing import Optional
 from datetime import datetime, timezone
 
+_cache: dict[str, tuple[dict, float]] = {}
+_cache_lock = threading.Lock()
+_MARKET_TTL = 300  # 5 minutes
+
 
 def fetch_market_data(symbol: str) -> dict:
+    key = symbol.upper()
+    with _cache_lock:
+        if key in _cache:
+            data, ts = _cache[key]
+            if time.time() - ts < _MARKET_TTL:
+                return data
+
     ticker = yf.Ticker(symbol)
     hist = ticker.history(period="3mo", interval="1d")
 
@@ -31,7 +44,7 @@ def fetch_market_data(symbol: str) -> dict:
     prev_close = float(close.iloc[-2]) if len(close) > 1 else latest_price
     price_change_pct = ((latest_price - prev_close) / prev_close) * 100
 
-    return {
+    result = {
         "symbol": symbol,
         "price": latest_price,
         "prev_close": prev_close,
@@ -62,6 +75,10 @@ def fetch_market_data(symbol: str) -> dict:
         ],
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    with _cache_lock:
+        _cache[key] = (result, time.time())
+    return result
 
 
 def fetch_actual_price(symbol: str) -> Optional[float]:

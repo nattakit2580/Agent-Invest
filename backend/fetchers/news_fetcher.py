@@ -1,8 +1,14 @@
+import time
+import threading
 import feedparser
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from config import get_settings
+
+_news_cache: dict[str, tuple[list, float]] = {}
+_news_lock = threading.Lock()
+_NEWS_TTL = 900  # 15 minutes
 
 settings = get_settings()
 
@@ -310,6 +316,13 @@ def fetch_sec_edgar_news(symbol: str, max_items: int = 5) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def fetch_all_news(symbol: str) -> list[dict]:
+    key = symbol.upper()
+    with _news_lock:
+        if key in _news_cache:
+            cached, ts = _news_cache[key]
+            if time.time() - ts < _NEWS_TTL:
+                return cached
+
     news: list[dict] = []
     news += fetch_rss_news(symbol)
     news += fetch_sec_edgar_news(symbol)
@@ -320,8 +333,12 @@ def fetch_all_news(symbol: str) -> list[dict]:
     seen: set[str] = set()
     unique: list[dict] = []
     for item in news:
-        key = (item.get("title") or "")[:60]
-        if key and key not in seen:
-            seen.add(key)
+        k = (item.get("title") or "")[:60]
+        if k and k not in seen:
+            seen.add(k)
             unique.append(item)
-    return unique[:25]
+    result = unique[:25]
+
+    with _news_lock:
+        _news_cache[key] = (result, time.time())
+    return result

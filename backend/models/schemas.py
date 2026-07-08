@@ -31,6 +31,7 @@ class PredictionResponse(BaseModel):
     accuracy_score: Optional[float]
     compared_at: Optional[datetime]
     status: str
+    market_regime: Optional[str] = None
 
     class Config:
         from_attributes = True

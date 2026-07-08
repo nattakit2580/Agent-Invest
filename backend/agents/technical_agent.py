@@ -75,7 +75,7 @@ After completing all 4 steps above, output this JSON as the final block:
             return {
                 "direction": "neutral",
                 "confidence": 0.3,
-                "summary": f"���ิเคราะห์ technical ���ม่สำเร็จ: {str(e)}",
+                "summary": f"วิเคราะห์ technical ไม่สำเร็จ: {str(e)}",
                 "key_points": [],
                 "reasoning_trace": "",
             }
