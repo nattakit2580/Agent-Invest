@@ -163,7 +163,16 @@ def export_dataset(
             row[f"{agent_name}_confidence"] = agent_data.get("confidence")
         rows.append(row)
 
-    df = pd.DataFrame(rows)
+    _DATASET_COLUMNS = [
+        "id", "symbol", "timeframe", "created_at", "direction", "actual_direction",
+        "direction_correct", "confidence", "current_price", "target_price",
+        "actual_price", "accuracy_score", "reasoning",
+        "news_direction", "news_confidence",
+        "fundamental_direction", "fundamental_confidence",
+        "technical_direction", "technical_confidence",
+        "sentiment_direction", "sentiment_confidence",
+    ]
+    df = pd.DataFrame(rows, columns=_DATASET_COLUMNS) if rows else pd.DataFrame(columns=_DATASET_COLUMNS)
     csv_content = df.to_csv(index=False, encoding="utf-8-sig")
     return Response(
         content=csv_content,
