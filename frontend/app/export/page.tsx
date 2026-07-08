@@ -1,11 +1,13 @@
 "use client";
 import { useState } from "react";
-import { Download, FileSpreadsheet, FileText } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
 
 const API = "/api";
 
 export default function ExportPage() {
   const [filter, setFilter] = useState({ symbol: "", timeframe: "", status: "" });
+  const [downloading, setDownloading] = useState<"csv" | "excel" | null>(null);
+  const [dlError, setDlError] = useState("");
 
   const buildUrl = (format: string) => {
     const params = new URLSearchParams();
@@ -16,8 +18,26 @@ export default function ExportPage() {
     return `${API}/export/${format}${qs ? "?" + qs : ""}`;
   };
 
-  const handleDownload = (format: "csv" | "excel") => {
-    window.open(buildUrl(format), "_blank");
+  const handleDownload = async (format: "csv" | "excel") => {
+    setDownloading(format);
+    setDlError("");
+    try {
+      const res = await fetch(buildUrl(format));
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = format === "csv" ? "predictions.csv" : "predictions.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setDlError(e instanceof Error ? e.message : "ดาวน์โหลดไม่สำเร็จ");
+    } finally {
+      setDownloading(null);
+    }
   };
 
   return (
@@ -73,12 +93,16 @@ export default function ExportPage() {
           </div>
         </div>
 
+        {dlError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-600">{dlError}</div>
+        )}
         <div className="grid grid-cols-2 gap-4 pt-2">
           <button
             onClick={() => handleDownload("csv")}
-            className="flex items-center justify-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 rounded-2xl py-4 transition-colors shadow-sm"
+            disabled={downloading !== null}
+            className="flex items-center justify-center gap-3 bg-white hover:bg-slate-50 disabled:opacity-50 border border-slate-200 text-slate-900 rounded-2xl py-4 transition-colors shadow-sm"
           >
-            <FileText className="w-6 h-6 text-blue-600" />
+            {downloading === "csv" ? <Loader2 className="w-6 h-6 text-blue-600 animate-spin" /> : <FileText className="w-6 h-6 text-blue-600" />}
             <div className="text-left">
               <div className="font-semibold">CSV</div>
               <div className="text-xs text-slate-500">เปิดใน Excel ได้</div>
@@ -86,9 +110,10 @@ export default function ExportPage() {
           </button>
           <button
             onClick={() => handleDownload("excel")}
-            className="flex items-center justify-center gap-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-2xl py-4 transition-colors"
+            disabled={downloading !== null}
+            className="flex items-center justify-center gap-3 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 border border-emerald-200 text-emerald-700 rounded-2xl py-4 transition-colors"
           >
-            <FileSpreadsheet className="w-6 h-6 text-emerald-600" />
+            {downloading === "excel" ? <Loader2 className="w-6 h-6 text-emerald-600 animate-spin" /> : <FileSpreadsheet className="w-6 h-6 text-emerald-600" />}
             <div className="text-left">
               <div className="font-semibold">Excel (.xlsx)</div>
               <div className="text-xs text-emerald-600">รวม Accuracy Summary</div>

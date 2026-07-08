@@ -32,9 +32,9 @@ function RegimeBadge({ regime }: { regime: string }) {
 }
 
 function AgentCard({ name, output }: { name: string; output: Record<string, unknown> }) {
-  const dir = output.direction as string;
-  const conf = output.confidence as number;
-  const summary = output.summary as string;
+  const dir = (output.direction as string) || "neutral";
+  const conf = (output.confidence as number) ?? 0.5;
+  const summary = (output.summary as string) || "";
   const keyPoints = (output.key_points as string[]) || [];
 
   const borderColor =
@@ -211,10 +211,10 @@ export default function AnalyzePage() {
               </div>
               <div className="text-right ml-6 flex-shrink-0">
                 <div className="text-slate-500 text-xs">Confidence</div>
-                <div className="text-3xl font-bold text-slate-900">{(result.confidence * 100).toFixed(0)}%</div>
+                <div className="text-3xl font-bold text-slate-900">{((result.confidence ?? 0) * 100).toFixed(0)}%</div>
                 <div className="text-slate-500 text-xs mt-2">Entry</div>
-                <div className="text-slate-900 font-semibold">${result.current_price.toFixed(2)}</div>
-                {result.target_price && (
+                <div className="text-slate-900 font-semibold">${(result.current_price ?? 0).toFixed(2)}</div>
+                {result.target_price != null && (
                   <>
                     <div className="text-slate-500 text-xs mt-1">Target</div>
                     <div className="text-blue-600 font-semibold">${result.target_price.toFixed(2)}</div>
@@ -228,9 +228,11 @@ export default function AnalyzePage() {
             <h3 className="text-lg font-semibold text-slate-900 mb-3">ผลวิเคราะห์แยก Agent</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {result.agent_outputs &&
-                Object.entries(result.agent_outputs).map(([name, output]) => (
-                  <AgentCard key={name} name={name} output={output as Record<string, unknown>} />
-                ))}
+                Object.entries(result.agent_outputs)
+                  .filter(([name]) => !name.startsWith("_"))
+                  .map(([name, output]) => (
+                    <AgentCard key={name} name={name} output={output as Record<string, unknown>} />
+                  ))}
             </div>
           </div>
 
