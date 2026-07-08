@@ -81,7 +81,10 @@ export default function AdminPage() {
       .finally(() => setConfigLoading(false));
 
     fetch("/api/admin/agents")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("endpoint not available");
+        return r.json();
+      })
       .then((data) => {
         if (Array.isArray(data)) {
           setAgentModels(data);
