@@ -53,6 +53,7 @@ def _apply_compare(p: Prediction, actual_price: float, db: Session) -> Predictio
     p.status = "compared"
 
     eval_data = build_evaluation(p, actual_price)
+    eval_data["market_regime"] = p.market_regime
     existing = db.query(EvaluationResult).filter(
         EvaluationResult.prediction_id == p.id
     ).first()
