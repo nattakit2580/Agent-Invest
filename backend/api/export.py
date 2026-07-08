@@ -9,10 +9,16 @@ from models.prediction import Prediction
 router = APIRouter(prefix="/export", tags=["export"])
 
 
+_EXPORT_COLUMNS = [
+    "ID", "Symbol", "Created At", "Timeframe", "Direction",
+    "Entry Price", "Target Price", "Confidence", "Reasoning",
+    "Actual Price", "Actual Direction", "Accuracy Score", "Compared At", "Status",
+]
+
+
 def _predictions_to_df(predictions: list[Prediction]) -> pd.DataFrame:
-    rows = []
-    for p in predictions:
-        rows.append({
+    rows = [
+        {
             "ID": p.id,
             "Symbol": p.symbol,
             "Created At": p.created_at,
@@ -27,8 +33,10 @@ def _predictions_to_df(predictions: list[Prediction]) -> pd.DataFrame:
             "Accuracy Score": p.accuracy_score,
             "Compared At": p.compared_at,
             "Status": p.status,
-        })
-    return pd.DataFrame(rows)
+        }
+        for p in predictions
+    ]
+    return pd.DataFrame(rows, columns=_EXPORT_COLUMNS) if rows else pd.DataFrame(columns=_EXPORT_COLUMNS)
 
 
 @router.get("/csv")

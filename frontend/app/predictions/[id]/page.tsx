@@ -20,8 +20,8 @@ function DirectionBadge({ direction }: { direction: string }) {
 }
 
 function AgentCard({ name, output }: { name: string; output: Record<string, unknown> }) {
-  const dir = output.direction as string;
-  const conf = (output.confidence as number) || 0;
+  const dir = (output.direction as string) || "neutral";
+  const conf = (output.confidence as number) ?? 0;
   const agentNames: Record<string, string> = {
     news: "News Agent", fundamental: "Fundamental Agent",
     technical: "Technical Agent", sentiment: "Sentiment Agent",
@@ -174,9 +174,11 @@ export default function PredictionDetailPage() {
         <div>
           <h2 className="text-lg font-semibold text-slate-900 mb-3">ผลวิเคราะห์แยก Agent</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Object.entries(p.agent_outputs).map(([name, output]) => (
-              <AgentCard key={name} name={name} output={output as Record<string, unknown>} />
-            ))}
+            {Object.entries(p.agent_outputs)
+              .filter(([name]) => !name.startsWith("_"))
+              .map(([name, output]) => (
+                <AgentCard key={name} name={name} output={output as Record<string, unknown>} />
+              ))}
           </div>
         </div>
       )}
