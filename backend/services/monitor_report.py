@@ -292,6 +292,65 @@ Return this exact JSON (all text values must be in Thai):
         return _fallback_brief(categories, watchlist)
 
 
+def _translate_categories_th(categories: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    """แปล title/summary ของข่าวที่จะแสดงในรายงานเป็นภาษาไทย (LLM call เดียว).
+
+    ลิงก์ต้นฉบับคงไว้เสมอ — ผู้อ่านกดเข้าไปอ่านฉบับเต็มได้
+    แปลไม่สำเร็จ = คืนต้นฉบับเดิม ไม่ทำให้รายงานล้ม
+    """
+    settings = get_settings()
+    if not settings.telegram_translate_news or not settings.openrouter_api_key:
+        return categories
+
+    # เก็บเฉพาะรายการที่จะถูก render จริง (5 ต่อหมวด) เพื่อไม่เปลือง token
+    to_translate: list[dict[str, str]] = []
+    index_map: list[tuple[str, int]] = []   # (category, item_index)
+    for category, items in categories.items():
+        for i, item in enumerate(items[:5]):
+            to_translate.append({
+                "title": item.get("title", "")[:240],
+                "summary": item.get("summary", "")[:400],
+            })
+            index_map.append((category, i))
+
+    if not to_translate:
+        return categories
+
+    system = (
+        "You are a professional Thai financial news translator. "
+        "Translate each news title and summary into natural Thai suitable for investors. "
+        "Keep ticker symbols, company names, numbers, and financial terms like RSI/MACD/IPO/FOMC in English. "
+        "Return ONLY valid JSON, no markdown."
+    )
+    user = f"""แปลข่าวการเงินต่อไปนี้เป็นภาษาไทย
+
+INPUT (JSON array):
+{json.dumps(to_translate, ensure_ascii=False)}
+
+Return this exact JSON — array เดียวกัน ลำดับเดิม จำนวนเท่าเดิม ({len(to_translate)} รายการ):
+{{"translations": [{{"title_th": "<หัวข้อภาษาไทย>", "summary_th": "<สรุปภาษาไทย 1-2 ประโยค>"}}]}}"""
+
+    try:
+        agent = BaseAgent()
+        agent.name = "news_translator"
+        result = agent._parse_json(agent._call_llm(system, user, max_tokens=3000))
+        translations = result.get("translations", [])
+        if len(translations) != len(index_map):
+            return categories
+
+        for (category, i), tr in zip(index_map, translations):
+            title_th = str(tr.get("title_th", "")).strip()
+            summary_th = str(tr.get("summary_th", "")).strip()
+            if title_th:
+                categories[category][i]["title"] = title_th
+            if summary_th:
+                categories[category][i]["summary"] = summary_th
+        return categories
+    except Exception as e:
+        print(f"[monitor_report] translate error (ใช้ต้นฉบับแทน): {e}")
+        return categories
+
+
 def _format_article(article: dict[str, Any]) -> str:
     title = article.get("title", "Untitled")
     source = article.get("source", "unknown")
@@ -453,6 +512,7 @@ def build_daily_monitor_report(
     settings = get_settings()
     now = _local_now()
     categories = fetch_agenda_categories(max_items=max_news_items or settings.monitor_report_max_news_items)
+    categories = _translate_categories_th(categories)
     watchlist = build_watchlist_summary(symbols, categories=categories, max_assets=max_assets)
     ipo_agenda = build_ipo_agenda(categories)
     brief = _generate_ai_brief(categories, watchlist, use_ai=use_ai)
