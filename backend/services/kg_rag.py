@@ -145,10 +145,6 @@ def get_graph_context(symbol: str, db: Session, depth: int = 2) -> str:
     try:
         entity = (
             db.query(KGEntity)
-            .filter(
-                (KGEntity.symbol == symbol.upper()) |
-                (KGEntity.entity_type == "company")
-            )
             .filter(KGEntity.symbol == symbol.upper())
             .first()
         )

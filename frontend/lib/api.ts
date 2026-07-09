@@ -394,3 +394,18 @@ export const getKnowledgeStats = () =>
 
 export const seedKnowledgeGraph = () =>
   api.post("/deep-research/knowledge/seed-graph").then((r) => r.data);
+
+export interface DatasetStats {
+  total_predictions: number;
+  compared: number;
+  export_ready: number;
+  next_target: number;
+  progress_pct: number;
+  direction_distribution: Record<string, number>;
+  timeframe_distribution: Record<string, number>;
+  accuracy_score_buckets: Record<string, number>;
+  targets: number[];
+}
+
+export const getDatasetStats = () =>
+  api.get<DatasetStats>("/dataset/stats").then((r) => r.data);
