@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Brain, Target, Download, Home, MessageCircle, Settings, FlaskConical } from "lucide-react";
+import { BarChart3, Brain, Target, Download, Home, MessageCircle, Settings, FlaskConical, Database } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: Home },
@@ -9,6 +9,7 @@ const navItems = [
   { href: "/analyze", label: "วิเคราะห์หุ้น", icon: Brain },
   { href: "/predictions", label: "ประวัติการคาดการณ์", icon: Target },
   { href: "/accuracy", label: "ความแม่นยำ", icon: BarChart3 },
+  { href: "/dataset", label: "Dataset", icon: Database },
   { href: "/export", label: "Export", icon: Download },
   { href: "/admin", label: "Admin", icon: Settings },
   { href: "/deep-research", label: "Deep Research", icon: FlaskConical },
