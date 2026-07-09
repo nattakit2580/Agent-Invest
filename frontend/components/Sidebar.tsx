@@ -14,6 +14,7 @@ import {
   Sparkles,
   SlidersHorizontal,
   FlaskConical,
+  Database,
   Menu,
   X,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const navItems = [
   { href: "/deep-research", label: "Deep Research", icon: FlaskConical },
   { href: "/predictions", label: "ประวัติการคาดการณ์", icon: Target },
   { href: "/accuracy", label: "ความแม่นยำ", icon: BarChart3 },
+  { href: "/dataset", label: "Dataset", icon: Database },
   { href: "/economic", label: "ตัวเลขเศรษฐกิจ", icon: LineChart },
   { href: "/calendar", label: "ปฏิทินเหตุการณ์", icon: CalendarClock },
   { href: "/insights", label: "ระบบเรียนรู้", icon: Sparkles },
