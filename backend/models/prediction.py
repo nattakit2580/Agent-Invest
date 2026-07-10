@@ -139,7 +139,7 @@ class TelegramMessage(Base):
     intent = Column(String(80), nullable=False, default="unknown", index=True)
     topic = Column(String(80), nullable=False, default="unknown", index=True)
     keywords = Column(JSON, nullable=True)
-    reply_status = Column(String(30), nullable=True)
+    reply_status = Column(String(200), nullable=True)   # "sent" or "failed: <up to ~120 char error>"
     message_date = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     raw_update = Column(JSON, nullable=True)

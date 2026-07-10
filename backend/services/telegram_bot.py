@@ -893,7 +893,7 @@ def handle_telegram_update(update: dict[str, Any], db: Session) -> dict[str, Any
         chat_type=chat.chat_type,
         text=text or None,
         normalized_text=_normalize_text(text) if text else None,
-        command=intent_info.get("command"),
+        command=(intent_info.get("command") or "")[:80] or None,
         intent=intent_info.get("intent", "unknown"),
         topic=intent_info.get("topic", "other"),
         keywords=intent_info.get("keywords") or [],
@@ -912,7 +912,7 @@ def handle_telegram_update(update: dict[str, Any], db: Session) -> dict[str, Any
         )
         if reply:
             client = TelegramClient(channel_id=chat.telegram_chat_id)
-            row.reply_status = _dispatch_reply(reply, client, chat.telegram_chat_id)
+            row.reply_status = _dispatch_reply(reply, client, chat.telegram_chat_id)[:200]
             db.commit()
 
     return {

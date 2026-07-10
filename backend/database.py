@@ -64,3 +64,9 @@ def init_db():
             conn.execute(text(
                 "ALTER TABLE evaluation_results ADD COLUMN IF NOT EXISTS market_regime VARCHAR(20)"
             ))
+            # reply_status was VARCHAR(30) but stores "failed: <error>" strings up to
+            # ~128 chars; Postgres rejects the overflow (SQLite silently ignores the
+            # limit, which is why this only broke in production). Widen it.
+            conn.execute(text(
+                "ALTER TABLE telegram_messages ALTER COLUMN reply_status TYPE VARCHAR(200)"
+            ))
