@@ -127,6 +127,11 @@ def resolve_telegram_intent(text: str | None) -> dict[str, Any]:
 
     if command and target_username and bot_username and target_username != bot_username:
         intent = "ignored_command"
+    elif command in {"start"} and args.strip() in {"portfolio", "watch"}:
+        # Deep-link payload from the "open in private chat" button shown when a
+        # personal command was blocked in a group (t.me/<bot>?start=portfolio).
+        intent = args.strip()
+        args = ""
     elif command in {"start"}:
         intent = "start"
     elif command in {"help"}:
@@ -264,6 +269,31 @@ def _portfolio_view(telegram_user_id: str, db: Session) -> str:
         f"\n📊 มูลค่ารวม ${total_value:,.2f} | {sign}${total_pnl:.2f} ({sign}{total_pnl_pct:.1f}%)"
     )
     return "\n".join(lines)
+
+
+_PRIVACY_LABELS = {
+    "portfolio": "Portfolio",
+    "watch": "Watchlist ส่วนตัว",
+}
+
+
+def _privacy_redirect_reply(command: str) -> TelegramReply:
+    """/portfolio and /watch hold per-user financial data — never post the
+    actual view into a group. Point the user to a private chat instead, via a
+    URL button (Telegram won't let a bot DM someone who hasn't opened a chat
+    with it first, so this deep-link is the correct way, not a direct send)."""
+    label = _PRIVACY_LABELS.get(command, command)
+    text = f"🔒 {label} เป็นข้อมูลส่วนตัว ใช้ได้เฉพาะในแชทส่วนตัวกับบอทเท่านั้น"
+    bot_username = get_settings().telegram_bot_username.strip("@")
+    if not bot_username:
+        return TelegramReply(text=text + f"\n\nเปิดแชทส่วนตัวกับบอทแล้วพิมพ์ /{command}")
+    return TelegramReply(
+        text=text,
+        keyboard=[[{
+            "text": f"🔓 เปิด {label} ในแชทส่วนตัว",
+            "url": f"https://t.me/{bot_username}?start={command}",
+        }]],
+    )
 
 
 def _portfolio_add(telegram_user_id: str, args: str, db: Session) -> str:
@@ -640,6 +670,7 @@ def build_telegram_reply(
     text: str,
     db: Session | None = None,
     telegram_user_id: str | None = None,
+    chat_type: str = "private",
 ) -> TelegramReply | None:
     intent = intent_info.get("intent", "unknown")
     args = intent_info.get("args", "")
@@ -709,6 +740,8 @@ def build_telegram_reply(
             )
 
         if intent == "portfolio":
+            if chat_type != "private":
+                return _privacy_redirect_reply("portfolio")
             reply_text = _format_portfolio_command(args, telegram_user_id, db)
             keyboard = None
             if telegram_user_id and db and not args.strip().startswith("add"):
@@ -716,6 +749,8 @@ def build_telegram_reply(
             return TelegramReply(text=reply_text, keyboard=keyboard)
 
         if intent == "watch":
+            if chat_type != "private":
+                return _privacy_redirect_reply("watch")
             reply_text = _format_watch_command(args, telegram_user_id, db)
             keyboard = None
             if telegram_user_id and db and not args.strip().startswith("add"):
@@ -862,7 +897,7 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
     except Exception:
         pass
 
-    reply = build_telegram_reply(intent_info, arg, db, telegram_user_id)
+    reply = build_telegram_reply(intent_info, arg, db, telegram_user_id, chat_type=chat.get("type") or "private")
     if not reply:
         return {"ok": True, "handled": False}
 
@@ -930,6 +965,7 @@ def handle_telegram_update(update: dict[str, Any], db: Session) -> dict[str, Any
         reply = build_telegram_reply(
             intent_info, text, db,
             user.telegram_user_id if user else None,
+            chat_type=chat.chat_type,
         )
         if reply:
             client = TelegramClient(channel_id=chat.telegram_chat_id)
