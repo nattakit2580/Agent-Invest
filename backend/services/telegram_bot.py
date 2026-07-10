@@ -50,6 +50,8 @@ INTENT_TOPICS = {
     "analyze_symbol": "analysis",
     "chart_symbol": "chart",
     "portfolio": "portfolio",
+    "watch": "watch",
+    "compare": "compare",
     "ignored_command": "other",
     "unknown": "other",
     "non_text": "other",
@@ -147,6 +149,10 @@ def resolve_telegram_intent(text: str | None) -> dict[str, Any]:
         intent = "chart_symbol"
     elif command in {"portfolio", "port", "holdings", "port"}:
         intent = "portfolio"
+    elif command in {"watch", "mywatch", "mylist"}:
+        intent = "watch"
+    elif command in {"compare", "vs"}:
+        intent = "compare"
     elif command:
         intent = "unknown"
     elif _extract_wallet_addresses(text):
@@ -327,6 +333,143 @@ def _format_portfolio_command(args: str, telegram_user_id: str | None, db: Sessi
     return _portfolio_view(telegram_user_id, db)
 
 
+def _watch_add(telegram_user_id: str, args: str, db: Session) -> str:
+    from models.watchlist import UserWatchlist
+    symbol = (args.strip().split() or [""])[0].upper()
+    if not symbol:
+        return "รูปแบบ: /watch add SYMBOL\nตัวอย่าง: /watch add TSLA"
+    existing = (
+        db.query(UserWatchlist)
+        .filter(
+            UserWatchlist.telegram_user_id == telegram_user_id,
+            UserWatchlist.symbol == symbol,
+        )
+        .first()
+    )
+    if existing:
+        return f"{symbol} อยู่ใน watchlist ของคุณอยู่แล้ว"
+    db.add(UserWatchlist(telegram_user_id=telegram_user_id, symbol=symbol))
+    db.commit()
+    return f"✅ เพิ่ม {symbol} ใน watchlist ส่วนตัวแล้ว"
+
+
+def _watch_remove(telegram_user_id: str, symbol: str, db: Session) -> str:
+    from models.watchlist import UserWatchlist
+    row = (
+        db.query(UserWatchlist)
+        .filter(
+            UserWatchlist.telegram_user_id == telegram_user_id,
+            UserWatchlist.symbol == symbol.upper(),
+        )
+        .first()
+    )
+    if not row:
+        return f"ไม่พบ {symbol.upper()} ใน watchlist ของคุณ"
+    db.delete(row)
+    db.commit()
+    return f"✅ ลบ {symbol.upper()} ออกจาก watchlist แล้ว"
+
+
+def _watch_view(telegram_user_id: str, db: Session) -> str:
+    from models.watchlist import UserWatchlist
+    rows = (
+        db.query(UserWatchlist)
+        .filter(UserWatchlist.telegram_user_id == telegram_user_id)
+        .order_by(UserWatchlist.created_at.asc())
+        .all()
+    )
+    if not rows:
+        return "Watchlist ส่วนตัวของคุณว่างอยู่\nเพิ่มด้วย /watch add SYMBOL เช่น /watch add TSLA"
+
+    lines = ["📋 Watchlist ส่วนตัวของคุณ"]
+    for row in rows:
+        try:
+            data = fetch_market_data(row.symbol)
+            price = _fmt_price(data.get("price"))
+            pct = _fmt_pct(data.get("price_change_pct"))
+            icon = "🟢" if (data.get("price_change_pct") or 0) >= 0 else "🔴"
+        except Exception:
+            price, pct, icon = "n/a", "n/a", "⚪"
+        lines.append(f"{icon} {row.symbol}: {price} ({pct})")
+    return "\n".join(lines)
+
+
+def _format_watch_command(args: str, telegram_user_id: str | None, db: Session | None) -> str:
+    """Parse /watch [add|remove|view] ... — personal watchlist, distinct from /watchlist (global config list)."""
+    if not telegram_user_id or not db:
+        return "Watchlist ส่วนตัวใช้ได้เฉพาะใน private chat กับบอท"
+    parts = args.strip().split(None, 1)
+    sub = parts[0].lower() if parts else "view"
+    sub_args = parts[1] if len(parts) > 1 else ""
+    if sub == "add":
+        return _watch_add(telegram_user_id, sub_args, db)
+    if sub in {"remove", "rm", "del", "delete"}:
+        return _watch_remove(telegram_user_id, sub_args or "", db)
+    return _watch_view(telegram_user_id, db)
+
+
+def _format_compare_reply(args: str) -> TelegramReply:
+    """Parse /compare SYMBOL1 SYMBOL2 — side-by-side snapshot, no LLM call (fast)."""
+    tokens = [t.upper() for t in re.split(r"\s+|,|\bvs\b|\bกับ\b", args, flags=re.IGNORECASE) if t.strip()]
+    if len(tokens) < 2:
+        return TelegramReply(text="รูปแบบ: /compare SYMBOL1 SYMBOL2\nตัวอย่าง: /compare AAPL MSFT")
+    sym_a, sym_b = tokens[0], tokens[1]
+
+    try:
+        data_a = fetch_market_data(sym_a)
+    except Exception as e:
+        return TelegramReply(text=f"ดึงข้อมูล {sym_a} ไม่สำเร็จ: {e}")
+    try:
+        data_b = fetch_market_data(sym_b)
+    except Exception as e:
+        return TelegramReply(text=f"ดึงข้อมูล {sym_b} ไม่สำเร็จ: {e}")
+
+    def row(label: str, a: Any, b: Any) -> str:
+        return f"{label:<10}: {a}  vs  {b}"
+
+    lines = [f"⚖️ {sym_a} vs {sym_b}", ""]
+    lines.append(row("ราคา", _fmt_price(data_a.get("price")), _fmt_price(data_b.get("price"))))
+    lines.append(row("1D", _fmt_pct(data_a.get("price_change_pct")), _fmt_pct(data_b.get("price_change_pct"))))
+    if data_a.get("pe_ratio") is not None or data_b.get("pe_ratio") is not None:
+        pe_a = data_a.get("pe_ratio")
+        pe_b = data_b.get("pe_ratio")
+        lines.append(row("P/E", f"{pe_a:.1f}" if pe_a is not None else "n/a", f"{pe_b:.1f}" if pe_b is not None else "n/a"))
+    if data_a.get("market_cap") or data_b.get("market_cap"):
+        def fmt_cap(v):
+            if not v:
+                return "n/a"
+            if v >= 1e12:
+                return f"${v/1e12:.2f}T"
+            if v >= 1e9:
+                return f"${v/1e9:.2f}B"
+            return f"${v:,.0f}"
+        lines.append(row("Market Cap", fmt_cap(data_a.get("market_cap")), fmt_cap(data_b.get("market_cap"))))
+    if data_a.get("rsi_14") is not None or data_b.get("rsi_14") is not None:
+        lines.append(row("RSI 14", data_a.get("rsi_14") or "n/a", data_b.get("rsi_14") or "n/a"))
+
+    # simple heuristic verdict — valuation + momentum, not a full AI call
+    notes = []
+    pe_a, pe_b = data_a.get("pe_ratio"), data_b.get("pe_ratio")
+    if pe_a is not None and pe_b is not None:
+        cheaper = sym_a if pe_a < pe_b else sym_b
+        notes.append(f"{cheaper} valuation ถูกกว่า (P/E ต่ำกว่า)")
+    chg_a, chg_b = data_a.get("price_change_pct") or 0, data_b.get("price_change_pct") or 0
+    stronger = sym_a if chg_a > chg_b else sym_b
+    notes.append(f"{stronger} momentum วันนี้ดีกว่า")
+    if notes:
+        lines.append("")
+        lines.append("💡 " + " | ".join(notes))
+        lines.append("(ข้อมูลดิบ ไม่ใช่คำแนะนำการลงทุน — ใช้ /analyze เพื่อดูวิเคราะห์เต็มจาก AI)")
+
+    return TelegramReply(
+        text="\n".join(lines),
+        keyboard=[[
+            {"text": f"📊 วิเคราะห์ {sym_a}", "callback_data": f"analyze:{sym_a}"},
+            {"text": f"📊 วิเคราะห์ {sym_b}", "callback_data": f"analyze:{sym_b}"},
+        ]],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Help text
 # ---------------------------------------------------------------------------
@@ -336,11 +479,16 @@ def _format_help() -> str:
         "Agent Invest bot commands",
         "",
         "/news - noteworthy market news",
-        "/watchlist - assets to monitor",
+        "/watchlist - assets to monitor (global)",
         "/ipo - IPO agenda",
         "/ipohk - Hong Kong IPO agenda",
         "/checkaddress <wallet> - identify crypto wallet and open explorers",
         "/report - full daily monitor",
+        "/analyze SYMBOL - run AI analysis",
+        "/chart SYMBOL - 7-day price chart",
+        "/portfolio [add|remove] SYMBOL QTY PRICE - track your holdings + live P&L",
+        "/watch [add|remove] SYMBOL - your personal watchlist (price only, no P&L)",
+        "/compare SYMBOL1 SYMBOL2 - side-by-side snapshot",
         "",
         "Natural language works too, for example: 'อยากดู IPO ฮ่องกง', 'หุ้นที่ควรติดตาม', or 'อยากตรวจกระเป๋าคริปโต 0x...'.",
         "",
@@ -546,6 +694,16 @@ def build_telegram_reply(
                 keyboard = [[{"text": "🔄 Refresh", "callback_data": "port_view"}]]
             return TelegramReply(text=reply_text, keyboard=keyboard)
 
+        if intent == "watch":
+            reply_text = _format_watch_command(args, telegram_user_id, db)
+            keyboard = None
+            if telegram_user_id and db and not args.strip().startswith("add"):
+                keyboard = [[{"text": "🔄 Refresh", "callback_data": "watch_view"}]]
+            return TelegramReply(text=reply_text, keyboard=keyboard)
+
+        if intent == "compare":
+            return _format_compare_reply(args)
+
     except Exception as exc:
         return TelegramReply(text=f"ขณะนี้ไม่สามารถดึงข้อมูลได้: {str(exc)[:180]}")
     return None
@@ -659,10 +817,11 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
 
     # Map callback actions to synthetic intent_info
     action_intent_map = {
-        "analyze":   "analyze_symbol",
-        "chart":     "chart_symbol",
-        "port_view": "portfolio",
-        "port_add":  "portfolio",
+        "analyze":    "analyze_symbol",
+        "chart":      "chart_symbol",
+        "port_view":  "portfolio",
+        "port_add":   "portfolio",
+        "watch_view": "watch",
     }
     intent = action_intent_map.get(action, "unknown")
 
