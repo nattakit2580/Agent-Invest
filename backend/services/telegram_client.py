@@ -235,6 +235,12 @@ class TelegramClient:
     def get_webhook_info(self) -> dict[str, Any]:
         return self._request("getWebhookInfo", timeout=20)
 
+    def set_my_commands(self, commands: list[dict[str, str]]) -> dict[str, Any]:
+        """Register the "/" command menu shown by Telegram (both private chats and
+        groups). Idempotent — safe to call on every startup, Telegram just
+        overwrites the list."""
+        return self._request("setMyCommands", {"commands": commands}, timeout=20)
+
 
 def broadcast_parallel(
     message: str,

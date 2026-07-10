@@ -471,6 +471,27 @@ def _format_compare_reply(args: str) -> TelegramReply:
 
 
 # ---------------------------------------------------------------------------
+# "/" command menu (Telegram setMyCommands) — shown in both private chats and
+# groups once registered. Names must be lowercase [a-z0-9_], no leading slash.
+# ---------------------------------------------------------------------------
+
+BOT_COMMANDS: list[dict[str, str]] = [
+    {"command": "analyze", "description": "วิเคราะห์หุ้นด้วย AI"},
+    {"command": "chart", "description": "กราฟราคาย้อนหลัง 7 วัน"},
+    {"command": "compare", "description": "เทียบหุ้น 2 ตัวแบบเคียงข้าง"},
+    {"command": "portfolio", "description": "พอร์ตของคุณ (add/remove/view + P&L)"},
+    {"command": "watch", "description": "Watchlist ส่วนตัว (add/remove/view)"},
+    {"command": "watchlist", "description": "หุ้นที่ระบบติดตามอยู่ (global)"},
+    {"command": "news", "description": "ข่าวเด่นประจำวัน"},
+    {"command": "report", "description": "รายงานตลาดประจำวันแบบเต็ม"},
+    {"command": "ipo", "description": "ตาราง IPO"},
+    {"command": "ipohk", "description": "ตาราง IPO ฮ่องกง"},
+    {"command": "checkaddress", "description": "ตรวจสอบ wallet address คริปโต"},
+    {"command": "help", "description": "วิธีใช้งานบอท"},
+]
+
+
+# ---------------------------------------------------------------------------
 # Help text
 # ---------------------------------------------------------------------------
 

@@ -26,6 +26,17 @@ async def lifespan(app: FastAPI):
     # doesn't pay a DB round-trip inside the agents.
     from services.agent_config import load_overrides
     load_overrides()
+
+    # Register the "/" command menu with Telegram (shows in private chats and
+    # groups). Idempotent, safe to run every startup; must never block boot.
+    if settings.telegram_bot_token:
+        try:
+            from services.telegram_client import TelegramClient
+            from services.telegram_bot import BOT_COMMANDS
+            TelegramClient().set_my_commands(BOT_COMMANDS)
+        except Exception as e:
+            print(f"[Startup] Telegram setMyCommands failed (non-fatal): {e}")
+
     scheduler = create_scheduler()
     scheduler.start()
     yield
