@@ -39,7 +39,8 @@ export default function InsightsPage() {
   useEffect(() => {
     Promise.all([getAgentAccuracyList(), getDynamicWeights()])
       .then(([a, w]) => {
-        setAgents(a);
+        // กรอง internal keys เช่น _critic ที่ไม่ใช่ agent ทายทิศทาง
+        setAgents(a.filter((item) => !item.agent.startsWith("_")));
         setWeights(w);
       })
       .finally(() => setLoading(false));
@@ -157,9 +158,9 @@ export default function InsightsPage() {
               <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 12 }} />
               <YAxis domain={[0, 100]} stroke="#64748b" tick={{ fontSize: 12 }} unit="%" />
               <Tooltip
-                cursor={{ fill: "#1e293b" }}
-                contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
-                labelStyle={{ color: "#f1f5f9" }}
+                cursor={{ fill: "rgba(148, 163, 184, 0.15)" }}
+                contentStyle={{ backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8 }}
+                labelStyle={{ color: "#0f172a" }}
                 formatter={(v: number, _n, p) => [`${v}% (${p.payload.samples} ครั้ง)`, "ความแม่นยำ"]}
               />
               <Bar dataKey="accuracy" radius={[4, 4, 0, 0]}>
@@ -186,9 +187,9 @@ export default function InsightsPage() {
             <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 12 }} />
             <YAxis stroke="#64748b" tick={{ fontSize: 12 }} unit="%" />
             <Tooltip
-              cursor={{ fill: "#1e293b" }}
-              contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
-              labelStyle={{ color: "#f1f5f9" }}
+              cursor={{ fill: "rgba(148, 163, 184, 0.15)" }}
+              contentStyle={{ backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8 }}
+              labelStyle={{ color: "#0f172a" }}
               formatter={(v: number) => [`${v}%`]}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
