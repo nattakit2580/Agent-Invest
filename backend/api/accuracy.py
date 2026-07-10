@@ -98,6 +98,8 @@ def get_agent_accuracy(db: Session = Depends(get_db)):
 
     for e in evals:
         for agent_name, correct in (e.agent_directions or {}).items():
+            if agent_name.startswith("_"):  # internal keys เช่น _critic ไม่ใช่ agent ทายทิศทาง
+                continue
             if agent_name not in stats:
                 stats[agent_name] = {"total": 0, "hits": 0}
             stats[agent_name]["total"] += 1
