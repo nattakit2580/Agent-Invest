@@ -33,9 +33,11 @@ async def lifespan(app: FastAPI):
         try:
             from services.telegram_client import TelegramClient
             from services.telegram_bot import BOT_COMMANDS
-            TelegramClient().set_my_commands(BOT_COMMANDS)
+            client = TelegramClient()
+            client.set_my_commands(BOT_COMMANDS)
+            client.set_chat_menu_button()  # private-chat "Menu" button; no group equivalent in the Bot API
         except Exception as e:
-            print(f"[Startup] Telegram setMyCommands failed (non-fatal): {e}")
+            print(f"[Startup] Telegram command menu setup failed (non-fatal): {e}")
 
     scheduler = create_scheduler()
     scheduler.start()

@@ -241,6 +241,13 @@ class TelegramClient:
         overwrites the list."""
         return self._request("setMyCommands", {"commands": commands}, timeout=20)
 
+    def set_chat_menu_button(self) -> dict[str, Any]:
+        """Show the clickable "Menu" button next to the message input, which opens
+        the command list on tap. Private chats only — Telegram's Bot API does not
+        support a menu button in groups/supergroups; there, "/" autocomplete
+        (set_my_commands) is the only entry point."""
+        return self._request("setChatMenuButton", {"menu_button": {"type": "commands"}}, timeout=20)
+
 
 def broadcast_parallel(
     message: str,
