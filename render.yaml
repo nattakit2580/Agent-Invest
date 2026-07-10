@@ -55,6 +55,8 @@ services:
         sync: false
       - key: TELEGRAM_TIMEZONE
         value: Asia/Bangkok
+      - key: TELEGRAM_DAILY_REPORT_ENABLED
+        value: "true"
 
   - type: web
     name: agent-invest-frontend
