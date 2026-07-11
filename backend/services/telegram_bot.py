@@ -52,10 +52,22 @@ INTENT_TOPICS = {
     "portfolio": "portfolio",
     "watch": "watch",
     "compare": "compare",
+    "earnings": "calendar",
+    "menu": "help",
+    "ai_chat": "chat",
     "ignored_command": "other",
     "unknown": "other",
     "non_text": "other",
 }
+
+# ในกลุ่ม บอททำหน้าที่ "รายงาน" เท่านั้น (ข่าว / งบไตรมาส / IPO) — intent อื่น
+# เช่น AI chat, portfolio, analyze ใช้ได้เฉพาะแชทส่วนตัว จะตอบ redirect ไป DM แทน
+GROUP_ALLOWED_INTENTS = {
+    "news", "ipo", "ipo_hk", "earnings", "daily_report", "watchlist",
+    "help", "start", "menu",
+}
+# intent เหล่านี้ในกลุ่มให้เงียบไปเลย (กันสแปมจากคำสั่งของบอทตัวอื่น/ข้อความทั่วไป)
+GROUP_SILENT_INTENTS = {"unknown", "ignored_command", "non_text"}
 
 
 def _now() -> datetime:
@@ -158,6 +170,10 @@ def resolve_telegram_intent(text: str | None) -> dict[str, Any]:
         intent = "watch"
     elif command in {"compare", "vs"}:
         intent = "compare"
+    elif command in {"earnings", "quarter", "quarterly"}:
+        intent = "earnings"
+    elif command in {"menu", "shortcuts"}:
+        intent = "menu"
     elif command:
         intent = "unknown"
     elif _extract_wallet_addresses(text):
@@ -166,6 +182,8 @@ def resolve_telegram_intent(text: str | None) -> dict[str, Any]:
         intent = "ipo_hk"
     elif any(word in normalized for word in ["ipo", "ไอพีโอ", "หุ้นเข้าใหม่", "ตารางจอง", "ตาราง ipo"]):
         intent = "ipo"
+    elif any(word in normalized for word in ["งบไตรมาส", "ประกาศงบ", "งบการเงิน", "earnings"]):
+        intent = "earnings"
     elif any(word in normalized for word in ["ข่าว", "news", "น่าจับตา", "จับตา", "headline", "update"]):
         intent = "news"
     elif any(word in normalized for word in ["watchlist", "list หุ้น", "ลิสต์หุ้น", "หุ้นที่ควรติดตาม", "หุ้นน่าติดตาม", "ติดตามหุ้น"]):
@@ -226,6 +244,192 @@ def _market_keyboard(symbol: str) -> list[list[dict[str, Any]]]:
     ]
 
 
+def _bot_dm_url() -> str | None:
+    username = get_settings().telegram_bot_username.strip("@")
+    return f"https://t.me/{username}" if username else None
+
+
+def _menu_reply(chat_type: str) -> TelegramReply:
+    """เมนูคีย์ลัดแบบปุ่มกด — ชุดปุ่มต่างกันตามประเภทแชท:
+    private = ครบทุกฟีเจอร์, group = เฉพาะรายงาน (ข่าว/งบ/IPO) + ปุ่มลิงก์ไป DM."""
+    if chat_type == "private":
+        keyboard: list[list[dict[str, Any]]] = [
+            [
+                {"text": "💼 พอร์ตของฉัน", "callback_data": "port_view"},
+                {"text": "📋 Watchlist",    "callback_data": "watch_view"},
+            ],
+            [
+                {"text": "📰 ข่าววันนี้",   "callback_data": "news"},
+                {"text": "🗓 IPO",          "callback_data": "ipo"},
+            ],
+            [
+                {"text": "📅 งบไตรมาส",     "callback_data": "earnings"},
+                {"text": "📊 รายงานเต็ม",   "callback_data": "report"},
+            ],
+            [
+                {"text": "❓ วิธีใช้",       "callback_data": "help"},
+            ],
+        ]
+        text = (
+            "⚡ เมนูคีย์ลัด — กดปุ่มได้เลย\n\n"
+            "หรือพิมพ์คุยกับ AI ได้ตรงนี้เลย เช่น\n"
+            "“พอร์ตฉันเป็นยังไงบ้าง” “NVDA ยังน่าถือไหม”"
+        )
+    else:
+        keyboard = [
+            [
+                {"text": "📰 ข่าววันนี้",   "callback_data": "news"},
+                {"text": "🗓 IPO",          "callback_data": "ipo"},
+            ],
+            [
+                {"text": "📅 งบไตรมาส",     "callback_data": "earnings"},
+                {"text": "📊 รายงานเต็ม",   "callback_data": "report"},
+            ],
+        ]
+        dm_url = _bot_dm_url()
+        if dm_url:
+            keyboard.append([{"text": "💬 แชทกับ AI ส่วนตัว", "url": dm_url}])
+        text = "⚡ เมนูรายงาน (ในกลุ่มใช้ได้เฉพาะรายงาน — แชท AI/พอร์ต ทักส่วนตัว)"
+    return TelegramReply(text=text, keyboard=keyboard)
+
+
+def _group_redirect_reply() -> TelegramReply:
+    """ตอบในกลุ่มเมื่อมีคนเรียกฟีเจอร์ที่เปิดเฉพาะแชทส่วนตัว (AI chat / พอร์ต / วิเคราะห์)."""
+    keyboard = None
+    dm_url = _bot_dm_url()
+    if dm_url:
+        keyboard = [[{"text": "💬 เปิดแชทส่วนตัวกับบอท", "url": dm_url}]]
+    return TelegramReply(
+        text=(
+            "ฟีเจอร์นี้ใช้ได้เฉพาะแชทส่วนตัวกับบอทครับ 🙏\n"
+            "ในกลุ่มผมรายงานได้เฉพาะ: /news ข่าว · /earnings งบไตรมาส · /ipo ตาราง IPO · /report สรุปตลาด"
+        ),
+        keyboard=keyboard,
+    )
+
+
+def _format_earnings_reply() -> str:
+    """ปฏิทินงบรายไตรมาส (earnings) + ex-dividend ที่กำลังมาถึง จาก CalendarEvent ใน DB."""
+    from fetchers.calendar_fetcher import get_upcoming_events
+    events = get_upcoming_events(days_ahead=30)
+    earnings = [e for e in events if e.get("event_type") == "earnings"]
+    dividends = [e for e in events if e.get("event_type") == "dividend"]
+
+    if not earnings and not dividends:
+        return (
+            "📅 งบรายไตรมาส\n"
+            "- ยังไม่มีกำหนดการงบใน 30 วันข้างหน้า (หรือระบบยังไม่ได้ refresh ปฏิทิน)\n"
+            "ระบบอัปเดตปฏิทินอัตโนมัติทุกวัน — ลองใหม่ภายหลัง"
+        )
+
+    lines = ["📅 งบรายไตรมาส 30 วันข้างหน้า"]
+    for e in earnings[:10]:
+        days = e.get("days_until", 0)
+        when = "วันนี้" if days == 0 else f"อีก {days} วัน"
+        lines.append(f"- {e.get('symbol') or '-'}: {e['event_date']} ({when})")
+    if dividends:
+        lines.append("")
+        lines.append("💰 Ex-dividend")
+        for e in dividends[:5]:
+            lines.append(f"- {e.get('symbol') or '-'}: {e['event_date']}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# AI chat (private เท่านั้น) — คุยกับ LLM โดยรู้ portfolio/watchlist ของผู้ใช้
+# ---------------------------------------------------------------------------
+
+AI_CHAT_SYSTEM_PROMPT = """คุณคือ Agent Invest ผู้ช่วยการลงทุนส่วนตัวใน Telegram ตอบเป็นภาษาไทย
+กติกา:
+- ตอบกระชับ ตรงคำถาม เหมาะกับหน้าจอมือถือ (ไม่เกิน ~10 บรรทัด) ไม่ใช้ markdown
+- คุณเห็นข้อมูล portfolio และ watchlist ของผู้ใช้ (แนบมาใน context) — ใช้อ้างอิงเมื่อเกี่ยวข้อง
+- ถ้าถูกถามความเห็นเรื่องหุ้น ให้วิเคราะห์จากข้อมูลที่มีอย่างระมัดระวัง และเตือนว่าไม่ใช่คำแนะนำการลงทุน
+- ถ้าคำถามต้องใช้ข้อมูลสดที่ไม่มีใน context แนะนำคำสั่งที่เหมาะ เช่น /analyze SYMBOL, /chart SYMBOL, /news, /earnings
+- ห้ามแต่งตัวเลขราคา/ข้อมูลที่ไม่มีใน context เด็ดขาด"""
+
+
+def _is_bare_symbol(text: str) -> bool:
+    """True เมื่อข้อความเป็นแค่ ticker เดี่ยวๆ เช่น "NVDA", "btc" — ตอบ snapshot เร็วพอ
+    ส่วนประโยคที่มี ticker ปนอยู่ (เช่น "ควรขาย NVDA ไหม") ให้ AI ตอบแทน."""
+    return bool(re.fullmatch(r"[A-Za-z]{1,8}(?:[-.][A-Za-z]{1,6})?", text.strip()))
+
+
+def _ai_chat_context(telegram_user_id: str | None, db: Session | None, text: str = "") -> str:
+    """รวบรวม context ส่วนตัว (portfolio + watchlist + ราคาหุ้นที่ถามถึง + ข้อความล่าสุด) ให้ LLM."""
+    parts: list[str] = []
+    symbol = _extract_symbol(text) if text else None
+    if symbol:
+        try:
+            data = fetch_market_data(symbol)
+            parts.append(
+                f"=== ราคาล่าสุด {symbol} ===\n"
+                f"ราคา {_fmt_price(data.get('price'))} | เปลี่ยนแปลง {_fmt_pct(data.get('price_change_pct'))}"
+                + (f" | RSI14 {data['rsi_14']}" if data.get("rsi_14") is not None else "")
+            )
+        except Exception:
+            pass
+    if telegram_user_id and db:
+        try:
+            parts.append("=== Portfolio ของผู้ใช้ (ราคาปัจจุบัน + P&L) ===\n" + _portfolio_view(telegram_user_id, db))
+        except Exception:
+            pass
+        try:
+            from models.watchlist import UserWatchlist
+            symbols = [
+                r.symbol for r in db.query(UserWatchlist)
+                .filter(UserWatchlist.telegram_user_id == telegram_user_id).all()
+            ]
+            if symbols:
+                parts.append("=== Watchlist ส่วนตัว ===\n" + ", ".join(symbols))
+        except Exception:
+            pass
+        try:
+            # ข้อความล่าสุดของผู้ใช้ (ตัวล่าสุดสุดคือข้อความปัจจุบัน — ข้าม)
+            recent = (
+                db.query(TelegramMessage)
+                .filter(
+                    TelegramMessage.telegram_user_id == telegram_user_id,
+                    TelegramMessage.chat_type == "private",
+                    TelegramMessage.text.isnot(None),
+                )
+                .order_by(TelegramMessage.created_at.desc())
+                .limit(7)
+                .all()
+            )
+            previous = [r.text for r in recent[1:] if r.text]
+            if previous:
+                parts.append(
+                    "=== ข้อความก่อนหน้าของผู้ใช้ (ใหม่→เก่า ใช้เข้าใจบริบทการสนทนา) ===\n"
+                    + "\n".join(f"- {t[:150]}" for t in previous[:6])
+                )
+        except Exception:
+            pass
+    return "\n\n".join(parts) if parts else "(ผู้ใช้ยังไม่มี portfolio/watchlist)"
+
+
+def _ai_chat_reply(text: str, telegram_user_id: str | None, db: Session | None) -> TelegramReply:
+    from agents.base_agent import BaseAgent
+    context = _ai_chat_context(telegram_user_id, db, text)
+    user_prompt = f"{context}\n\n=== คำถามของผู้ใช้ ===\n{text[:1500]}"
+    try:
+        agent = BaseAgent()
+        agent.name = "telegram_chat"
+        answer = (agent._call_llm(AI_CHAT_SYSTEM_PROMPT, user_prompt, max_tokens=700) or "").strip()
+    except Exception as exc:
+        return TelegramReply(
+            text=f"ตอนนี้ AI ตอบไม่ได้ชั่วคราว ({str(exc)[:120]})\nลองใช้เมนูคำสั่งแทน: /menu"
+        )
+    if not answer:
+        return TelegramReply(text="AI ไม่มีคำตอบสำหรับข้อความนี้ ลอง /menu ดูคำสั่งที่ใช้ได้")
+    return TelegramReply(
+        text=answer[:3900],
+        keyboard=[[
+            {"text": "💼 พอร์ต",  "callback_data": "port_view"},
+            {"text": "⚡ เมนู",   "callback_data": "menu"},
+        ]],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Portfolio helpers
 # ---------------------------------------------------------------------------
@@ -269,31 +473,6 @@ def _portfolio_view(telegram_user_id: str, db: Session) -> str:
         f"\n📊 มูลค่ารวม ${total_value:,.2f} | {sign}${total_pnl:.2f} ({sign}{total_pnl_pct:.1f}%)"
     )
     return "\n".join(lines)
-
-
-_PRIVACY_LABELS = {
-    "portfolio": "Portfolio",
-    "watch": "Watchlist ส่วนตัว",
-}
-
-
-def _privacy_redirect_reply(command: str) -> TelegramReply:
-    """/portfolio and /watch hold per-user financial data — never post the
-    actual view into a group. Point the user to a private chat instead, via a
-    URL button (Telegram won't let a bot DM someone who hasn't opened a chat
-    with it first, so this deep-link is the correct way, not a direct send)."""
-    label = _PRIVACY_LABELS.get(command, command)
-    text = f"🔒 {label} เป็นข้อมูลส่วนตัว ใช้ได้เฉพาะในแชทส่วนตัวกับบอทเท่านั้น"
-    bot_username = get_settings().telegram_bot_username.strip("@")
-    if not bot_username:
-        return TelegramReply(text=text + f"\n\nเปิดแชทส่วนตัวกับบอทแล้วพิมพ์ /{command}")
-    return TelegramReply(
-        text=text,
-        keyboard=[[{
-            "text": f"🔓 เปิด {label} ในแชทส่วนตัว",
-            "url": f"https://t.me/{bot_username}?start={command}",
-        }]],
-    )
 
 
 def _portfolio_add(telegram_user_id: str, args: str, db: Session) -> str:
@@ -506,6 +685,7 @@ def _format_compare_reply(args: str) -> TelegramReply:
 # ---------------------------------------------------------------------------
 
 BOT_COMMANDS: list[dict[str, str]] = [
+    {"command": "menu", "description": "เมนูคีย์ลัดแบบปุ่มกด"},
     {"command": "analyze", "description": "วิเคราะห์หุ้นด้วย AI"},
     {"command": "chart", "description": "กราฟราคาย้อนหลัง 7 วัน"},
     {"command": "compare", "description": "เทียบหุ้น 2 ตัวแบบเคียงข้าง"},
@@ -516,6 +696,7 @@ BOT_COMMANDS: list[dict[str, str]] = [
     {"command": "report", "description": "รายงานตลาดประจำวันแบบเต็ม"},
     {"command": "ipo", "description": "ตาราง IPO"},
     {"command": "ipohk", "description": "ตาราง IPO ฮ่องกง"},
+    {"command": "earnings", "description": "ปฏิทินงบรายไตรมาส"},
     {"command": "checkaddress", "description": "ตรวจสอบ wallet address คริปโต"},
     {"command": "help", "description": "วิธีใช้งานบอท"},
 ]
@@ -529,7 +710,9 @@ def _format_help() -> str:
     return "\n".join([
         "Agent Invest bot commands",
         "",
+        "/menu - shortcut button menu",
         "/news - noteworthy market news",
+        "/earnings - upcoming quarterly earnings calendar",
         "/watchlist - assets to monitor (global)",
         "/ipo - IPO agenda",
         "/ipohk - Hong Kong IPO agenda",
@@ -542,6 +725,8 @@ def _format_help() -> str:
         "/compare SYMBOL1 SYMBOL2 - side-by-side snapshot",
         "",
         "Natural language works too, for example: 'อยากดู IPO ฮ่องกง', 'หุ้นที่ควรติดตาม', or 'อยากตรวจกระเป๋าคริปโต 0x...'.",
+        "",
+        "ในแชทส่วนตัว พิมพ์คุยกับ AI ได้เลย (รู้จัก portfolio ของคุณ) — ในกลุ่มใช้ได้เฉพาะคำสั่งรายงาน (/news /earnings /ipo /report)",
         "",
         "Disclaimer: automated monitoring only, not financial advice.",
     ])
@@ -675,8 +860,14 @@ def build_telegram_reply(
     intent = intent_info.get("intent", "unknown")
     args = intent_info.get("args", "")
     try:
-        if intent in {"start", "help", "unknown"}:
+        if intent in {"start", "menu"}:
+            return _menu_reply(chat_type)
+        if intent in {"help", "unknown"}:
             return TelegramReply(text=_format_help())
+        if intent == "earnings":
+            return TelegramReply(text=_format_earnings_reply())
+        if intent == "ai_chat":
+            return _ai_chat_reply(text, telegram_user_id, db)
         if intent == "ipo_hk":
             return TelegramReply(text=_format_ipo_reply(hk_only=True))
         if intent == "ipo":
@@ -740,8 +931,6 @@ def build_telegram_reply(
             )
 
         if intent == "portfolio":
-            if chat_type != "private":
-                return _privacy_redirect_reply("portfolio")
             reply_text = _format_portfolio_command(args, telegram_user_id, db)
             keyboard = None
             if telegram_user_id and db and not args.strip().startswith("add"):
@@ -749,8 +938,6 @@ def build_telegram_reply(
             return TelegramReply(text=reply_text, keyboard=keyboard)
 
         if intent == "watch":
-            if chat_type != "private":
-                return _privacy_redirect_reply("watch")
             reply_text = _format_watch_command(args, telegram_user_id, db)
             keyboard = None
             if telegram_user_id and db and not args.strip().startswith("add"):
@@ -878,6 +1065,14 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
         "port_view":  "portfolio",
         "port_add":   "portfolio",
         "watch_view": "watch",
+        "news":       "news",
+        "ipo":        "ipo",
+        "ipohk":      "ipo_hk",
+        "earnings":   "earnings",
+        "report":     "daily_report",
+        "watchlist":  "watchlist",
+        "menu":       "menu",
+        "help":       "help",
     }
     intent = action_intent_map.get(action, "unknown")
 
@@ -890,6 +1085,15 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
     intent_info = {"intent": intent, "command": action, "args": args_str, "keywords": []}
 
     client = TelegramClient(channel_id=chat_id)
+    chat_type = str(chat.get("type") or "unknown")
+
+    # ปุ่มที่กดในกลุ่มต้องเป็น intent ฝั่งรายงานเท่านั้น (กันปุ่มเก่า/ปุ่มส่งต่อ)
+    if chat_type != "private" and intent not in GROUP_ALLOWED_INTENTS:
+        try:
+            client.answer_callback_query(callback_id, text="ฟีเจอร์นี้ใช้ในแชทส่วนตัวกับบอทครับ")
+        except Exception:
+            pass
+        return {"ok": True, "handled": True, "action": action, "status": "blocked_in_group"}
 
     # Acknowledge button press first (removes loading spinner)
     try:
@@ -897,7 +1101,7 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
     except Exception:
         pass
 
-    reply = build_telegram_reply(intent_info, arg, db, telegram_user_id, chat_type=chat.get("type") or "private")
+    reply = build_telegram_reply(intent_info, arg, db, telegram_user_id, chat_type=chat_type)
     if not reply:
         return {"ok": True, "handled": False}
 
@@ -932,6 +1136,22 @@ def handle_telegram_update(update: dict[str, Any], db: Session) -> dict[str, Any
         "keywords": [],
     }
 
+    # private chat: ข้อความ free-text → คุยกับ AI
+    # ครอบทั้ง intent "unknown" และประโยคที่มี ticker ปน (market_symbol) —
+    # ยกเว้นพิมพ์ ticker เดี่ยวๆ ("NVDA") ที่ตอบ snapshot เร็วเหมาะกว่า
+    chat_type_raw = (raw_chat.get("type") or "unknown") if isinstance(raw_chat, dict) else "unknown"
+    if (
+        chat_type_raw == "private"
+        and not intent_info.get("command")
+        and get_settings().telegram_private_ai_chat
+        and (
+            intent_info.get("intent") == "unknown"
+            or (intent_info.get("intent") == "market_symbol" and not _is_bare_symbol(text))
+        )
+    ):
+        intent_info["intent"] = "ai_chat"
+        intent_info["topic"] = INTENT_TOPICS["ai_chat"]
+
     message_date = None
     if message.get("date") is not None:
         try:
@@ -962,11 +1182,22 @@ def handle_telegram_update(update: dict[str, Any], db: Session) -> dict[str, Any
     db.refresh(row)
 
     if text and _should_reply(chat.chat_type, text, intent_info):
-        reply = build_telegram_reply(
-            intent_info, text, db,
-            user.telegram_user_id if user else None,
-            chat_type=chat.chat_type,
-        )
+        intent = intent_info.get("intent", "unknown")
+        if chat.chat_type != "private" and intent not in GROUP_ALLOWED_INTENTS:
+            # ในกลุ่ม: intent ที่เปิดเฉพาะส่วนตัว → ชี้ไป DM, intent ขยะ → เงียบ
+            # ยกเว้น unknown: ตอบเฉพาะเมื่อ @mention บอทตรงๆ (ไม่ใช่คำสั่งหลงมาของบอทอื่น)
+            bot_username = get_settings().telegram_bot_username.strip("@").lower()
+            mentioned = bool(bot_username and f"@{bot_username}" in text.lower())
+            if intent in GROUP_SILENT_INTENTS and not mentioned:
+                reply = None
+            else:
+                reply = _group_redirect_reply()
+        else:
+            reply = build_telegram_reply(
+                intent_info, text, db,
+                user.telegram_user_id if user else None,
+                chat_type=chat.chat_type,
+            )
         if reply:
             client = TelegramClient(channel_id=chat.telegram_chat_id)
             row.reply_status = _dispatch_reply(reply, client, chat.telegram_chat_id)[:200]
