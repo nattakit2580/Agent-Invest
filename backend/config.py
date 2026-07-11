@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     telegram_timezone: str = "Asia/Bangkok"
     telegram_use_ai_summary: bool = True
     telegram_translate_news: bool = True     # แปลหัวข้อ/สรุปข่าวเป็นไทยก่อนส่ง
+    telegram_private_ai_chat: bool = True    # private chat: free-text คุยกับ AI (รู้ portfolio)
     telegram_bot_username: str = ""
     telegram_public_news_limit: int = 3
     telegram_public_watchlist_limit: int = 3
