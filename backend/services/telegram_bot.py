@@ -349,9 +349,14 @@ AI_CHAT_SYSTEM_PROMPT = """คุณคือ Agent Invest ผู้ช่วย
 
 
 def _is_bare_symbol(text: str) -> bool:
-    """True เมื่อข้อความเป็นแค่ ticker เดี่ยวๆ เช่น "NVDA", "btc" — ตอบ snapshot เร็วพอ
-    ส่วนประโยคที่มี ticker ปนอยู่ (เช่น "ควรขาย NVDA ไหม") ให้ AI ตอบแทน."""
-    return bool(re.fullmatch(r"[A-Za-z]{1,8}(?:[-.][A-Za-z]{1,6})?", text.strip()))
+    """True เมื่อข้อความเป็นแค่ ticker เดี่ยวๆ ที่ตั้งใจพิมพ์เป็น ticker — ตอบ snapshot เร็ว
+    เงื่อนไข: พิมพ์ตัวใหญ่ทั้งหมด ("NVDA") หรือเป็น alias คริปโตที่คนพิมพ์เล็กจนชิน ("btc")
+    คำอังกฤษพิมพ์เล็กทั่วไป ("hello", "nvda") ให้ AI ตอบแทน — AI เห็นราคาสดใน context อยู่แล้ว
+    ส่วนประโยคที่มี ticker ปนอยู่ (เช่น "ควรขาย NVDA ไหม") ให้ AI ตอบเช่นกัน."""
+    stripped = text.strip()
+    if not re.fullmatch(r"[A-Za-z]{1,8}(?:[-.][A-Za-z]{1,6})?", stripped):
+        return False
+    return stripped.isupper() or stripped.lower() in {"btc", "eth", "btc-usd", "eth-usd"}
 
 
 def _ai_chat_context(telegram_user_id: str | None, db: Session | None, text: str = "") -> str:
@@ -407,8 +412,28 @@ def _ai_chat_context(telegram_user_id: str | None, db: Session | None, text: str
     return "\n\n".join(parts) if parts else "(ผู้ใช้ยังไม่มี portfolio/watchlist)"
 
 
+# throttle ต่อ user กันสแปมเผาโควตา LLM — in-memory พอ (โปรเซสเดียว, รีเซ็ตตอน restart ไม่เป็นไร)
+_AI_CHAT_LAST_CALL: dict[str, float] = {}
+_AI_CHAT_MIN_INTERVAL_SEC = 3.0
+
+
+def _ai_chat_throttled(telegram_user_id: str | None) -> bool:
+    """True = ถามถี่เกินไป (และบันทึกเวลาเรียกล่าสุดเมื่อผ่าน)."""
+    if not telegram_user_id:
+        return False
+    import time
+    now_ts = time.monotonic()
+    last = _AI_CHAT_LAST_CALL.get(telegram_user_id, 0.0)
+    if now_ts - last < _AI_CHAT_MIN_INTERVAL_SEC:
+        return True
+    _AI_CHAT_LAST_CALL[telegram_user_id] = now_ts
+    return False
+
+
 def _ai_chat_reply(text: str, telegram_user_id: str | None, db: Session | None) -> TelegramReply:
     from agents.base_agent import BaseAgent
+    if _ai_chat_throttled(telegram_user_id):
+        return TelegramReply(text="ส่งข้อความถี่เกินไปครับ รอสักครู่แล้วถามใหม่ 🙏")
     context = _ai_chat_context(telegram_user_id, db, text)
     user_prompt = f"{context}\n\n=== คำถามของผู้ใช้ ===\n{text[:1500]}"
     try:
