@@ -71,7 +71,9 @@ class Settings(BaseSettings):
     critic_agent_model: str = ""
 
     # Password guarding the /admin model-config page (verified server-side).
-    admin_password: str = "NiceAgent"
+    # No default on purpose — must be set via env, otherwise /admin is fully
+    # locked (empty string never matches the login check).
+    admin_password: str = ""
 
     # Economic indicators (FRED). Register a free key at https://fredaccount.stlouisfed.org/apikeys
     fred_api_key: str = ""
