@@ -116,16 +116,48 @@ def _extract_wallet_addresses(text: str) -> list[dict[str, str]]:
     return found[:5]
 
 
+# หุ้นเอเชียเป็นรหัสตัวเลข + suffix ตลาด เช่น 0700.HK (ฮ่องกง), 600519.SS (เซี่ยงไฮ้),
+# 000001.SZ (เซินเจิ้น) — yfinance ใช้ฟอร์แมตนี้
+CN_HK_RE = re.compile(r"\b(\d{1,6})\.(HK|SS|SZ|SH|TW|BK)\b", re.IGNORECASE)
+_CRYPTO_ALIASES = {"BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX", "DOT"}
+
+
+def _resolve_symbol(raw: str | None) -> str | None:
+    """Normalize a user-typed ticker to a yfinance symbol. Handles crypto
+    shortcuts and Chinese/HK numeric tickers (pads HK codes to 4 digits,
+    maps Shanghai SH->SS)."""
+    if not raw:
+        return None
+    s = raw.strip().upper()
+    if not s:
+        return None
+    if s in _CRYPTO_ALIASES:
+        return f"{s}-USD"
+    m = re.fullmatch(r"(\d{1,6})\.(HK|SS|SZ|SH|TW|BK)", s)
+    if m:
+        num, suf = m.group(1), m.group(2)
+        if suf == "SH":
+            suf = "SS"
+        if suf == "HK":
+            num = num.zfill(4)   # เช่น 700 -> 0700
+        return f"{num}.{suf}"
+    return s
+
+
 def _extract_symbol(text: str) -> str | None:
-    ignored = {"IPO", "HK", "HKEX", "NEWS", "WATCHLIST", "REPORT", "USD", "THE", "AND"}
-    for match in SYMBOL_RE.findall(text.upper()):
+    ignored = {
+        "IPO", "HK", "HKEX", "NEWS", "WATCHLIST", "REPORT", "USD", "THE", "AND",
+        "GRAPH", "CHART", "PRICE", "ANALYZE", "AI", "MENU",
+    }
+    up = text.upper()
+    # หุ้นจีน/ฮ่องกงแบบรหัสตัวเลข + suffix ตลาด (ตรวจก่อนเพราะ regex ทั่วไปจับไม่ได้)
+    m = CN_HK_RE.search(up)
+    if m:
+        return _resolve_symbol(m.group(0))
+    for match in SYMBOL_RE.findall(up):
         if match in ignored:
             continue
-        if match == "BTC":
-            return "BTC-USD"
-        if match == "ETH":
-            return "ETH-USD"
-        return match
+        return _resolve_symbol(match)
     return None
 
 
@@ -162,7 +194,7 @@ def resolve_telegram_intent(text: str | None) -> dict[str, Any]:
         intent = "daily_report"
     elif command in {"analyze", "ai", "วิเคราะห์"}:
         intent = "analyze_symbol"
-    elif command in {"chart", "price", "กราฟ", "กราฟราคา"}:
+    elif command in {"chart", "price", "กราฟ", "กราฟราคา", "graph", "graphs"}:
         intent = "chart_symbol"
     elif command in {"portfolio", "port", "holdings", "port"}:
         intent = "portfolio"
@@ -192,6 +224,8 @@ def resolve_telegram_intent(text: str | None) -> dict[str, Any]:
         intent = "wallet_check"
     elif any(word in normalized for word in ["สรุปตลาด", "daily report", "รายงาน", "ภาพรวมตลาด", "summary"]):
         intent = "daily_report"
+    elif any(word in normalized for word in ["graph", "chart", "กราฟ", "ตีกราฟ"]) and _extract_symbol(text):
+        intent = "chart_symbol"
     elif _extract_symbol(text):
         intent = "market_symbol"
     else:
@@ -428,6 +462,27 @@ def _ai_chat_throttled(telegram_user_id: str | None) -> bool:
         return True
     _AI_CHAT_LAST_CALL[telegram_user_id] = now_ts
     return False
+
+
+def _quota_reached_reply(feature_th: str, used: int, limit: int) -> TelegramReply:
+    return TelegramReply(
+        text=(
+            f"⏳ วันนี้คุณใช้สิทธิ์ {feature_th} ครบแล้ว ({used}/{limit} ครั้ง)\n"
+            f"สิทธิ์จะรีเซ็ตใหม่พรุ่งนี้ครับ — ถ้าต้องการเพิ่มสิทธิ์แจ้งแอดมินได้"
+        ),
+        keyboard=[[{"text": "⚡ เมนู", "callback_data": "menu"}]],
+    )
+
+
+def _chart_caption(meta: dict) -> str:
+    cur = meta["currency"]
+    sign = "+" if meta["change_pct"] >= 0 else ""
+    return (
+        f"📈 {meta['symbol']} — {meta['days']} วัน   {meta['arrow']} แนวโน้ม{meta['trend_th']}\n"
+        f"ราคา {cur}{meta['last_price']:,.2f} ({sign}{meta['change_pct']:.1f}%)\n"
+        f"ช่วง {meta['days']} วัน: สูงสุด {cur}{meta['recent_high']:,.2f} · ต่ำสุด {cur}{meta['recent_low']:,.2f}\n"
+        f"(ข้อมูลดิบ ไม่ใช่คำแนะนำการลงทุน)"
+    )
 
 
 def _ai_chat_reply(text: str, telegram_user_id: str | None, db: Session | None) -> TelegramReply:
@@ -711,7 +766,8 @@ def _format_compare_reply(args: str) -> TelegramReply:
 
 BOT_COMMANDS: list[dict[str, str]] = [
     {"command": "menu", "description": "เมนูคีย์ลัดแบบปุ่มกด"},
-    {"command": "analyze", "description": "วิเคราะห์หุ้นด้วย AI"},
+    {"command": "analyze", "description": "วิเคราะห์หุ้นด้วย AI (จำกัดต่อวัน)"},
+    {"command": "graph", "description": "กราฟราคา + แนวโน้ม (รองรับจีน/ฮ่องกง)"},
     {"command": "chart", "description": "กราฟราคาย้อนหลัง 7 วัน"},
     {"command": "compare", "description": "เทียบหุ้น 2 ตัวแบบเคียงข้าง"},
     {"command": "portfolio", "description": "พอร์ตของคุณ (add/remove/view + P&L)"},
@@ -743,7 +799,8 @@ def _format_help() -> str:
         "/ipohk - Hong Kong IPO agenda",
         "/checkaddress <wallet> - identify crypto wallet and open explorers",
         "/report - full daily monitor",
-        "/analyze SYMBOL - run AI analysis",
+        "/analyze SYMBOL - run AI analysis (daily quota per user)",
+        "/graph SYMBOL - price chart with trend line (e.g. /graph ORCL, /graph 0700.HK, /graph 600519.SS)",
         "/chart SYMBOL - 7-day price chart",
         "/portfolio [add|remove] SYMBOL QTY PRICE - track your holdings + live P&L",
         "/watch [add|remove] SYMBOL - your personal watchlist (price only, no P&L)",
@@ -892,6 +949,11 @@ def build_telegram_reply(
         if intent == "earnings":
             return TelegramReply(text=_format_earnings_reply())
         if intent == "ai_chat":
+            if telegram_user_id and db:
+                from services.usage import try_consume
+                q = try_consume(db, telegram_user_id, "chat", get_settings().telegram_daily_chat_quota)
+                if not q.allowed:
+                    return _quota_reached_reply("แชท AI", q.used, q.limit)
             return _ai_chat_reply(text, telegram_user_id, db)
         if intent == "ipo_hk":
             return TelegramReply(text=_format_ipo_reply(hk_only=True))
@@ -917,10 +979,16 @@ def build_telegram_reply(
         if intent == "analyze_symbol":
             symbol = _extract_symbol(args) or _extract_symbol(text)
             if not symbol:
-                return TelegramReply(text="ส่ง symbol เช่น /analyze AAPL")
+                return TelegramReply(text="ส่ง symbol เช่น /analyze AAPL หรือ /analyze 0700.HK")
             from agents.orchestrator import Orchestrator
             from fetchers.news_fetcher import fetch_all_news
-            market_data = fetch_market_data(symbol)
+            market_data = fetch_market_data(symbol)   # ตรวจ symbol ก่อน (ผิดจะ raise ไม่หักโควตา)
+            # โควตา: หักหลังยืนยัน symbol ใช้ได้ แต่ก่อนเรียก LLM (ส่วนที่แพง)
+            if telegram_user_id and db:
+                from services.usage import try_consume
+                q = try_consume(db, telegram_user_id, "analyze", get_settings().telegram_daily_analyze_quota)
+                if not q.allowed:
+                    return _quota_reached_reply("วิเคราะห์ AI", q.used, q.limit)
             news = fetch_all_news(symbol)
             result = Orchestrator().analyze(symbol, market_data, news)
             direction = result["direction"]
@@ -943,12 +1011,22 @@ def build_telegram_reply(
         if intent == "chart_symbol":
             symbol = _extract_symbol(args) or _extract_symbol(text)
             if not symbol:
-                return TelegramReply(text="ส่ง symbol เช่น /chart AAPL")
+                return TelegramReply(text="ส่ง symbol เช่น /graph AAPL, /graph 0700.HK หรือ /graph 600519.SS")
+            # โควตา: เช็คก่อนเรนเดอร์ (กันเรนเดอร์ทิ้งเมื่อเกินสิทธิ์)
+            if telegram_user_id and db:
+                from services.usage import peek_quota
+                pq = peek_quota(db, telegram_user_id, "graph", get_settings().telegram_daily_graph_quota)
+                if not pq.allowed:
+                    return _quota_reached_reply("ตีกราฟ", pq.used, pq.limit)
             from services.telegram_chart import generate_price_chart
-            photo = generate_price_chart(symbol, days=7)
+            photo, meta = generate_price_chart(symbol, days=7)
+            # เรนเดอร์สำเร็จ (symbol ใช้ได้) แล้วค่อยหักโควตา
+            if telegram_user_id and db:
+                from services.usage import try_consume
+                try_consume(db, telegram_user_id, "graph", get_settings().telegram_daily_graph_quota)
             return TelegramReply(
                 photo_bytes=photo,
-                caption=f"📈 {symbol} — 7 วัน",
+                caption=_chart_caption(meta),
                 keyboard=[[
                     {"text": "📊 วิเคราะห์ AI",  "callback_data": f"analyze:{symbol}"},
                     {"text": "➕ เพิ่ม Port",     "callback_data": f"port_add:{symbol}"},

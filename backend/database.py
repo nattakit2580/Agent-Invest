@@ -43,6 +43,7 @@ def init_db():
     from models.knowledge_graph import KGEntity, KGRelationship  # noqa
     from models.portfolio import UserPortfolio  # noqa
     from models.watchlist import UserWatchlist  # noqa
+    from models.usage import UserDailyUsage  # noqa
 
     # The embedding table has a pgvector column, so the extension must exist first.
     if engine.url.get_backend_name().startswith("postgresql"):
