@@ -38,8 +38,9 @@ class Settings(BaseSettings):
     # โควตาต่อ user ต่อวัน (0 = ไม่จำกัด) ใช้กับ private chat
     telegram_daily_analyze_quota: int = 2    # /analyze — AI วิเคราะห์เต็ม
     telegram_daily_graph_quota: int = 10     # /graph — กราฟพร้อมแนวโน้ม
-    telegram_daily_chat_quota: int = 20      # free-text AI chat
-    telegram_unlimited_user_ids: str = ""    # csv ของ telegram user id ที่ไม่จำกัด (เจ้าของ/แอดมิน)
+    telegram_daily_chat_quota: int = 20      # free-text AI chat (tier free)
+    telegram_pro_multiplier: int = 10        # tier pro = โควตา free x เท่านี้
+    telegram_unlimited_user_ids: str = ""    # csv ของ telegram user id ที่ไม่จำกัด + เป็นแอดมินตั้ง tier ได้
     telegram_public_news_limit: int = 3
     telegram_public_watchlist_limit: int = 3
     telegram_private_report_max_assets: int = 20

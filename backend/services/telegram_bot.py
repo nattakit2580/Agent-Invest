@@ -55,6 +55,8 @@ INTENT_TOPICS = {
     "earnings": "calendar",
     "menu": "help",
     "ai_chat": "chat",
+    "set_tier": "admin",
+    "my_status": "status",
     "ignored_command": "other",
     "unknown": "other",
     "non_text": "other",
@@ -206,6 +208,10 @@ def resolve_telegram_intent(text: str | None) -> dict[str, Any]:
         intent = "earnings"
     elif command in {"menu", "shortcuts"}:
         intent = "menu"
+    elif command in {"settier"}:
+        intent = "set_tier"
+    elif command in {"me", "status", "tier", "myplan", "plan"}:
+        intent = "my_status"
     elif command:
         intent = "unknown"
     elif _extract_wallet_addresses(text):
@@ -301,6 +307,7 @@ def _menu_reply(chat_type: str) -> TelegramReply:
                 {"text": "📊 รายงานเต็ม",   "callback_data": "report"},
             ],
             [
+                {"text": "👤 แพ็กเกจ/สิทธิ์", "callback_data": "me"},
                 {"text": "❓ วิธีใช้",       "callback_data": "help"},
             ],
         ]
@@ -462,6 +469,71 @@ def _ai_chat_throttled(telegram_user_id: str | None) -> bool:
         return True
     _AI_CHAT_LAST_CALL[telegram_user_id] = now_ts
     return False
+
+
+GRAPH_TIMEFRAMES = {
+    "1d": 1, "3d": 3, "1w": 7, "2w": 14, "1m": 30, "3m": 90, "6m": 180, "1y": 365,
+}
+
+
+def _parse_graph_days(text: str) -> int:
+    """หา timeframe token ในข้อความ เช่น '1m', '3m' คืนจำนวนวัน (default 7 = 1 สัปดาห์)."""
+    for tok, days in GRAPH_TIMEFRAMES.items():
+        if re.search(rf"\b{tok}\b", text, re.IGNORECASE):
+            return days
+    return 7
+
+
+def _is_admin(telegram_user_id: str | None) -> bool:
+    """แอดมิน = user id ที่อยู่ใน TELEGRAM_UNLIMITED_USER_IDS (เจ้าของ/ผู้ดูแล)."""
+    if not telegram_user_id:
+        return False
+    ids = {s.strip() for s in split_csv(get_settings().telegram_unlimited_user_ids)}
+    return telegram_user_id in ids
+
+
+def _my_status_reply(telegram_user_id: str | None, db: Session | None) -> TelegramReply:
+    """แสดง tier + สิทธิ์คงเหลือของวันนี้ให้ผู้ใช้ (customer-facing)."""
+    if not telegram_user_id or not db:
+        return TelegramReply(text="ดูสถานะได้เฉพาะในแชทส่วนตัวกับบอทครับ")
+    from services.tiers import get_user_tier, quota_for, TIER_LABELS
+    from services.usage import peek_quota
+
+    tier = get_user_tier(db, telegram_user_id)
+    unlimited_wl = _is_admin(telegram_user_id)
+    lines = [f"👤 แพ็กเกจของคุณ: {TIER_LABELS.get(tier, tier)}" + ("  (unlimited)" if unlimited_wl else "")]
+    lines.append("")
+    lines.append("สิทธิ์คงเหลือวันนี้:")
+    feature_labels = [("analyze", "🧠 วิเคราะห์ AI"), ("graph", "📈 ตีกราฟ"), ("chat", "💬 แชท AI")]
+    for feature, label in feature_labels:
+        limit = quota_for(db, telegram_user_id, feature)
+        if limit <= 0 or unlimited_wl:
+            lines.append(f"• {label}: ไม่จำกัด")
+        else:
+            q = peek_quota(db, telegram_user_id, feature, limit)
+            remaining = max(0, limit - q.used)
+            lines.append(f"• {label}: เหลือ {remaining}/{limit} ครั้ง")
+    lines.append("")
+    lines.append("สิทธิ์รีเซ็ตทุกเที่ยงคืน (เวลาไทย) — อยากอัปเกรดแพ็กเกจแจ้งแอดมินได้ครับ")
+    return TelegramReply(text="\n".join(lines), keyboard=[[{"text": "⚡ เมนู", "callback_data": "menu"}]])
+
+
+def _set_tier_reply(args: str, caller_id: str | None, db: Session | None) -> TelegramReply:
+    """/settier <user_id> <tier> — เฉพาะแอดมิน (TELEGRAM_UNLIMITED_USER_IDS)."""
+    if not _is_admin(caller_id) or not db:
+        return TelegramReply(text="คำสั่งนี้ใช้ได้เฉพาะแอดมินครับ")
+    from services.tiers import set_user_tier, TIERS, TIER_LABELS
+    parts = args.split()
+    if len(parts) < 2:
+        return TelegramReply(
+            text=f"รูปแบบ: /settier <user_id> <tier>\ntier ที่ใช้ได้: {', '.join(TIERS)}\nตัวอย่าง: /settier 123456789 pro"
+        )
+    target_id, tier = parts[0], parts[1]
+    try:
+        new_tier = set_user_tier(db, target_id, tier)
+    except ValueError as e:
+        return TelegramReply(text=str(e))
+    return TelegramReply(text=f"✅ ตั้ง user {target_id} เป็นแพ็กเกจ {TIER_LABELS.get(new_tier, new_tier)} แล้ว")
 
 
 def _quota_reached_reply(feature_th: str, used: int, limit: int) -> TelegramReply:
@@ -767,8 +839,9 @@ def _format_compare_reply(args: str) -> TelegramReply:
 BOT_COMMANDS: list[dict[str, str]] = [
     {"command": "menu", "description": "เมนูคีย์ลัดแบบปุ่มกด"},
     {"command": "analyze", "description": "วิเคราะห์หุ้นด้วย AI (จำกัดต่อวัน)"},
-    {"command": "graph", "description": "กราฟราคา + แนวโน้ม (รองรับจีน/ฮ่องกง)"},
+    {"command": "graph", "description": "กราฟราคา + แนวโน้ม (เช่น /graph AAPL 1m, รองรับจีน/ฮ่องกง)"},
     {"command": "chart", "description": "กราฟราคาย้อนหลัง 7 วัน"},
+    {"command": "me", "description": "ดูแพ็กเกจ + สิทธิ์คงเหลือวันนี้"},
     {"command": "compare", "description": "เทียบหุ้น 2 ตัวแบบเคียงข้าง"},
     {"command": "portfolio", "description": "พอร์ตของคุณ (add/remove/view + P&L)"},
     {"command": "watch", "description": "Watchlist ส่วนตัว (add/remove/view)"},
@@ -800,8 +873,9 @@ def _format_help() -> str:
         "/checkaddress <wallet> - identify crypto wallet and open explorers",
         "/report - full daily monitor",
         "/analyze SYMBOL - run AI analysis (daily quota per user)",
-        "/graph SYMBOL - price chart with trend line (e.g. /graph ORCL, /graph 0700.HK, /graph 600519.SS)",
+        "/graph SYMBOL [tf] - price chart with trend (e.g. /graph ORCL 1m, /graph 0700.HK, /graph 600519.SS)",
         "/chart SYMBOL - 7-day price chart",
+        "/me - your plan + remaining quota today",
         "/portfolio [add|remove] SYMBOL QTY PRICE - track your holdings + live P&L",
         "/watch [add|remove] SYMBOL - your personal watchlist (price only, no P&L)",
         "/compare SYMBOL1 SYMBOL2 - side-by-side snapshot",
@@ -948,10 +1022,15 @@ def build_telegram_reply(
             return TelegramReply(text=_format_help())
         if intent == "earnings":
             return TelegramReply(text=_format_earnings_reply())
+        if intent == "my_status":
+            return _my_status_reply(telegram_user_id, db)
+        if intent == "set_tier":
+            return _set_tier_reply(args, telegram_user_id, db)
         if intent == "ai_chat":
             if telegram_user_id and db:
                 from services.usage import try_consume
-                q = try_consume(db, telegram_user_id, "chat", get_settings().telegram_daily_chat_quota)
+                from services.tiers import quota_for
+                q = try_consume(db, telegram_user_id, "chat", quota_for(db, telegram_user_id, "chat"))
                 if not q.allowed:
                     return _quota_reached_reply("แชท AI", q.used, q.limit)
             return _ai_chat_reply(text, telegram_user_id, db)
@@ -986,7 +1065,8 @@ def build_telegram_reply(
             # โควตา: หักหลังยืนยัน symbol ใช้ได้ แต่ก่อนเรียก LLM (ส่วนที่แพง)
             if telegram_user_id and db:
                 from services.usage import try_consume
-                q = try_consume(db, telegram_user_id, "analyze", get_settings().telegram_daily_analyze_quota)
+                from services.tiers import quota_for
+                q = try_consume(db, telegram_user_id, "analyze", quota_for(db, telegram_user_id, "analyze"))
                 if not q.allowed:
                     return _quota_reached_reply("วิเคราะห์ AI", q.used, q.limit)
             news = fetch_all_news(symbol)
@@ -1011,19 +1091,22 @@ def build_telegram_reply(
         if intent == "chart_symbol":
             symbol = _extract_symbol(args) or _extract_symbol(text)
             if not symbol:
-                return TelegramReply(text="ส่ง symbol เช่น /graph AAPL, /graph 0700.HK หรือ /graph 600519.SS")
+                return TelegramReply(text="ส่ง symbol เช่น /graph AAPL, /graph 0700.HK หรือ /graph 600519.SS\nระบุช่วงเวลาได้: /graph AAPL 1m (1d/1w/1m/3m/6m/1y)")
+            days = _parse_graph_days(args or text)
             # โควตา: เช็คก่อนเรนเดอร์ (กันเรนเดอร์ทิ้งเมื่อเกินสิทธิ์)
             if telegram_user_id and db:
                 from services.usage import peek_quota
-                pq = peek_quota(db, telegram_user_id, "graph", get_settings().telegram_daily_graph_quota)
+                from services.tiers import quota_for
+                pq = peek_quota(db, telegram_user_id, "graph", quota_for(db, telegram_user_id, "graph"))
                 if not pq.allowed:
                     return _quota_reached_reply("ตีกราฟ", pq.used, pq.limit)
             from services.telegram_chart import generate_price_chart
-            photo, meta = generate_price_chart(symbol, days=7)
+            photo, meta = generate_price_chart(symbol, days=days)
             # เรนเดอร์สำเร็จ (symbol ใช้ได้) แล้วค่อยหักโควตา
             if telegram_user_id and db:
                 from services.usage import try_consume
-                try_consume(db, telegram_user_id, "graph", get_settings().telegram_daily_graph_quota)
+                from services.tiers import quota_for
+                try_consume(db, telegram_user_id, "graph", quota_for(db, telegram_user_id, "graph"))
             return TelegramReply(
                 photo_bytes=photo,
                 caption=_chart_caption(meta),
@@ -1176,6 +1259,7 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
         "watchlist":  "watchlist",
         "menu":       "menu",
         "help":       "help",
+        "me":         "my_status",
     }
     intent = action_intent_map.get(action, "unknown")
 
