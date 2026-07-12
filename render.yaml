@@ -53,6 +53,13 @@ services:
         sync: false
       - key: TELEGRAM_CHANNEL_ID
         sync: false
+      # กลุ่ม community — ตั้ง chat id ของกลุ่ม (ขึ้นต้น -100 สำหรับ supergroup) แล้ว
+      # เปิด TELEGRAM_COMMUNITY_REPORT_ENABLED=true เพื่อให้รายงานรายวันเข้ากลุ่มด้วย
+      # (บอทต้องเป็นสมาชิก/แอดมินของกลุ่มนั้น)
+      - key: TELEGRAM_COMMUNITY_CHAT_ID
+        sync: false
+      - key: TELEGRAM_COMMUNITY_REPORT_ENABLED
+        value: "false"
       - key: TELEGRAM_ADMIN_TOKEN
         sync: false
       # Required: webhook now fails closed without it. Auto-generated so no human
