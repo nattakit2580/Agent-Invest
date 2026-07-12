@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     telegram_daily_graph_quota: int = 10     # /graph — กราฟพร้อมแนวโน้ม
     telegram_daily_chat_quota: int = 20      # free-text AI chat (tier free)
     telegram_pro_multiplier: int = 10        # tier pro = โควตา free x เท่านี้
+    telegram_alerts_enabled: bool = True
+    telegram_alert_check_interval_min: int = 20   # ทุกกี่นาทีเช็คราคาแจ้งเตือน
+    telegram_max_alerts_per_user: int = 10        # จำนวน alert active สูงสุด/คน (tier vip ไม่จำกัด)
     telegram_unlimited_user_ids: str = ""    # csv ของ telegram user id ที่ไม่จำกัด + เป็นแอดมินตั้ง tier ได้
     telegram_public_news_limit: int = 3
     telegram_public_watchlist_limit: int = 3

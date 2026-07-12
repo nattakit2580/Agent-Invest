@@ -57,6 +57,7 @@ INTENT_TOPICS = {
     "ai_chat": "chat",
     "set_tier": "admin",
     "my_status": "status",
+    "alert": "alert",
     "ignored_command": "other",
     "unknown": "other",
     "non_text": "other",
@@ -208,6 +209,8 @@ def resolve_telegram_intent(text: str | None) -> dict[str, Any]:
         intent = "earnings"
     elif command in {"menu", "shortcuts"}:
         intent = "menu"
+    elif command in {"alert", "alerts", "แจ้งเตือน"}:
+        intent = "alert"
     elif command in {"settier"}:
         intent = "set_tier"
     elif command in {"me", "status", "tier", "myplan", "plan"}:
@@ -476,12 +479,26 @@ GRAPH_TIMEFRAMES = {
 }
 
 
-def _parse_graph_days(text: str) -> int:
-    """หา timeframe token ในข้อความ เช่น '1m', '3m' คืนจำนวนวัน (default 7 = 1 สัปดาห์)."""
+def _parse_graph_days(text: str, default: int = 7) -> int:
+    """หา timeframe token ในข้อความ เช่น '1m', '3m' คืนจำนวนวัน (default = 1 สัปดาห์)."""
     for tok, days in GRAPH_TIMEFRAMES.items():
         if re.search(rf"\b{tok}\b", text, re.IGNORECASE):
             return days
-    return 7
+    return default
+
+
+def _extract_symbols(text: str, limit: int = 4) -> list[str]:
+    """ดึงหลาย ticker จากข้อความ (คั่นด้วย vs / , / เว้นวรรค) สำหรับโหมดเปรียบเทียบ."""
+    out: list[str] = []
+    for tok in re.split(r"\s+|,|\bvs\b|\bกับ\b", text, flags=re.IGNORECASE):
+        if not tok.strip():
+            continue
+        sym = _extract_symbol(tok)
+        if sym and sym not in out:
+            out.append(sym)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _is_admin(telegram_user_id: str | None) -> bool:
@@ -534,6 +551,106 @@ def _set_tier_reply(args: str, caller_id: str | None, db: Session | None) -> Tel
     except ValueError as e:
         return TelegramReply(text=str(e))
     return TelegramReply(text=f"✅ ตั้ง user {target_id} เป็นแพ็กเกจ {TIER_LABELS.get(new_tier, new_tier)} แล้ว")
+
+
+def _portfolio_data(telegram_user_id: str, db: Session) -> list[dict]:
+    """โครงสร้างพอร์ตพร้อมมูลค่าปัจจุบัน/ทุน/PnL ต่อรายการ (ใช้ทำกราฟวงกลม)."""
+    from models.portfolio import UserPortfolio
+    holdings = (
+        db.query(UserPortfolio)
+        .filter(UserPortfolio.telegram_user_id == telegram_user_id)
+        .all()
+    )
+    rows: list[dict] = []
+    for h in holdings:
+        try:
+            data = fetch_market_data(h.symbol)
+            current = float(data.get("price") or h.buy_price)
+        except Exception:
+            current = h.buy_price
+        cost = h.quantity * h.buy_price
+        value = h.quantity * current
+        rows.append({"symbol": h.symbol, "value": value, "cost": cost, "pnl": value - cost})
+    return rows
+
+
+def _portfolio_chart_reply(telegram_user_id: str | None, db: Session | None) -> TelegramReply:
+    if not telegram_user_id or not db:
+        return TelegramReply(text="ดูพอร์ตได้เฉพาะในแชทส่วนตัวกับบอทครับ")
+    rows = _portfolio_data(telegram_user_id, db)
+    if not rows:
+        return TelegramReply(text="💼 Portfolio ว่างเปล่า\nเพิ่มหุ้น: /portfolio add AAPL 10 180.50")
+    from services.telegram_chart import generate_portfolio_chart
+    photo, meta = generate_portfolio_chart(rows)
+    sign = "+" if meta["total_pnl"] >= 0 else ""
+    caption = (
+        f"💼 พอร์ตของคุณ — {meta['holdings']} รายการ\n"
+        f"มูลค่ารวม ${meta['total_value']:,.2f} | P&L {sign}${meta['total_pnl']:,.2f} ({sign}{meta['total_pnl_pct']:.1f}%)"
+    )
+    return TelegramReply(
+        photo_bytes=photo, caption=caption,
+        keyboard=[[{"text": "🔄 รีเฟรช", "callback_data": "port_chart"},
+                   {"text": "💼 รายการ", "callback_data": "port_view"}]],
+    )
+
+
+def _format_alert_command(args: str, telegram_user_id: str | None, db: Session | None) -> TelegramReply:
+    """/alert SYMBOL PRICE (ตั้ง) · /alert list · /alert remove SYMBOL."""
+    if not telegram_user_id or not db:
+        return TelegramReply(text="ตั้งแจ้งเตือนราคาได้เฉพาะในแชทส่วนตัวกับบอทครับ")
+    from services import alerts as alert_svc
+
+    parts = args.split()
+    sub = parts[0].lower() if parts else "list"
+
+    if sub in {"list", "ls", ""} or not parts:
+        rows = alert_svc.list_alerts(db, telegram_user_id, active_only=True)
+        if not rows:
+            return TelegramReply(text="🔔 ยังไม่มีแจ้งเตือนราคาที่ตั้งไว้\nตั้งด้วย: /alert AAPL 250")
+        lines = ["🔔 แจ้งเตือนราคาที่ใช้งานอยู่"]
+        for a in rows:
+            op = "≥" if a.direction == "above" else "≤"
+            lines.append(f"• {a.symbol}  {op} ${a.target_price:,.2f}")
+        lines.append("\nลบ: /alert remove SYMBOL")
+        return TelegramReply(text="\n".join(lines))
+
+    if sub in {"remove", "rm", "del", "delete", "cancel"}:
+        sym = _extract_symbol(" ".join(parts[1:])) if len(parts) > 1 else None
+        if not sym:
+            return TelegramReply(text="รูปแบบ: /alert remove SYMBOL")
+        n = alert_svc.remove_alerts_for_symbol(db, telegram_user_id, sym)
+        return TelegramReply(text=f"✅ ลบแจ้งเตือน {sym} แล้ว ({n} รายการ)" if n else f"ไม่พบแจ้งเตือน {sym}")
+
+    # create: /alert SYMBOL PRICE
+    symbol = _extract_symbol(parts[0])
+    if not symbol or len(parts) < 2:
+        return TelegramReply(text="รูปแบบ: /alert SYMBOL PRICE\nตัวอย่าง: /alert AAPL 250  หรือ  /alert 0700.HK 400")
+    try:
+        target = float(parts[1].replace(",", ""))
+    except ValueError:
+        return TelegramReply(text="ราคาต้องเป็นตัวเลข เช่น /alert AAPL 250")
+    if target <= 0:
+        return TelegramReply(text="ราคาต้องมากกว่า 0")
+
+    # cap จำนวน alert ต่อคน (vip / whitelist ไม่จำกัด)
+    from services.tiers import get_user_tier
+    unlimited = _is_admin(telegram_user_id) or get_user_tier(db, telegram_user_id) == "vip"
+    cap = get_settings().telegram_max_alerts_per_user
+    if not unlimited and cap > 0 and alert_svc.count_active(db, telegram_user_id) >= cap:
+        return TelegramReply(text=f"⏳ ตั้งแจ้งเตือนได้สูงสุด {cap} รายการ — ลบของเก่าก่อน (/alert remove SYMBOL)")
+
+    ref = None
+    try:
+        ref = float(fetch_market_data(symbol).get("price"))
+    except Exception:
+        pass
+    row = alert_svc.create_alert(db, telegram_user_id, symbol, target, ref)
+    op = "ขึ้นถึง" if row.direction == "above" else "ลงถึง"
+    now_txt = f" (ตอนนี้ ${ref:,.2f})" if ref else ""
+    return TelegramReply(
+        text=f"🔔 ตั้งแจ้งเตือน {symbol} เมื่อราคา{op} ${target:,.2f}{now_txt}\nจะเตือนอัตโนมัติเมื่อถึงเป้า",
+        keyboard=[[{"text": "🔔 ดูทั้งหมด", "callback_data": "alert_list"}]],
+    )
 
 
 def _quota_reached_reply(feature_th: str, used: int, limit: int) -> TelegramReply:
@@ -841,6 +958,7 @@ BOT_COMMANDS: list[dict[str, str]] = [
     {"command": "analyze", "description": "วิเคราะห์หุ้นด้วย AI (จำกัดต่อวัน)"},
     {"command": "graph", "description": "กราฟราคา + แนวโน้ม (เช่น /graph AAPL 1m, รองรับจีน/ฮ่องกง)"},
     {"command": "chart", "description": "กราฟราคาย้อนหลัง 7 วัน"},
+    {"command": "alert", "description": "แจ้งเตือนราคา เช่น /alert AAPL 250"},
     {"command": "me", "description": "ดูแพ็กเกจ + สิทธิ์คงเหลือวันนี้"},
     {"command": "compare", "description": "เทียบหุ้น 2 ตัวแบบเคียงข้าง"},
     {"command": "portfolio", "description": "พอร์ตของคุณ (add/remove/view + P&L)"},
@@ -873,8 +991,10 @@ def _format_help() -> str:
         "/checkaddress <wallet> - identify crypto wallet and open explorers",
         "/report - full daily monitor",
         "/analyze SYMBOL - run AI analysis (daily quota per user)",
-        "/graph SYMBOL [tf] - price chart with trend (e.g. /graph ORCL 1m, /graph 0700.HK, /graph 600519.SS)",
+        "/graph SYMBOL [tf] - price chart with trend (e.g. /graph ORCL 1m, /graph 0700.HK). Compare: /graph AAPL vs MSFT",
         "/chart SYMBOL - 7-day price chart",
+        "/portfolio chart - your holdings as a pie chart with total P&L",
+        "/alert SYMBOL PRICE - alert when price is reached (e.g. /alert AAPL 250). /alert list, /alert remove SYMBOL",
         "/me - your plan + remaining quota today",
         "/portfolio [add|remove] SYMBOL QTY PRICE - track your holdings + live P&L",
         "/watch [add|remove] SYMBOL - your personal watchlist (price only, no P&L)",
@@ -1026,6 +1146,8 @@ def build_telegram_reply(
             return _my_status_reply(telegram_user_id, db)
         if intent == "set_tier":
             return _set_tier_reply(args, telegram_user_id, db)
+        if intent == "alert":
+            return _format_alert_command(args, telegram_user_id, db)
         if intent == "ai_chat":
             if telegram_user_id and db:
                 from services.usage import try_consume
@@ -1089,10 +1211,12 @@ def build_telegram_reply(
             )
 
         if intent == "chart_symbol":
-            symbol = _extract_symbol(args) or _extract_symbol(text)
-            if not symbol:
-                return TelegramReply(text="ส่ง symbol เช่น /graph AAPL, /graph 0700.HK หรือ /graph 600519.SS\nระบุช่วงเวลาได้: /graph AAPL 1m (1d/1w/1m/3m/6m/1y)")
-            days = _parse_graph_days(args or text)
+            source = args or text
+            multi = _extract_symbols(source)
+            is_compare = len(multi) >= 2
+            symbol = None if is_compare else (_extract_symbol(args) or _extract_symbol(text))
+            if not is_compare and not symbol:
+                return TelegramReply(text="ส่ง symbol เช่น /graph AAPL, /graph 0700.HK หรือ /graph 600519.SS\nเปรียบเทียบ: /graph AAPL vs MSFT · ช่วงเวลา: /graph AAPL 1m")
             # โควตา: เช็คก่อนเรนเดอร์ (กันเรนเดอร์ทิ้งเมื่อเกินสิทธิ์)
             if telegram_user_id and db:
                 from services.usage import peek_quota
@@ -1100,27 +1224,47 @@ def build_telegram_reply(
                 pq = peek_quota(db, telegram_user_id, "graph", quota_for(db, telegram_user_id, "graph"))
                 if not pq.allowed:
                     return _quota_reached_reply("ตีกราฟ", pq.used, pq.limit)
-            from services.telegram_chart import generate_price_chart
-            photo, meta = generate_price_chart(symbol, days=days)
+
+            if is_compare:
+                days = _parse_graph_days(source, default=30)   # เปรียบเทียบ default 30 วัน
+                from services.telegram_chart import generate_compare_chart
+                photo, meta = generate_compare_chart(multi, days=days)
+                ranked = sorted(meta["changes"].items(), key=lambda kv: kv[1], reverse=True)
+                lines = [f"⚖️ เปรียบเทียบ {days} วัน (% เปลี่ยนแปลง)"]
+                for i, (sym, pct) in enumerate(ranked):
+                    medal = "🥇" if i == 0 else ("🥈" if i == 1 else "•")
+                    sign = "+" if pct >= 0 else ""
+                    lines.append(f"{medal} {sym}: {sign}{pct:.1f}%")
+                caption = "\n".join(lines)
+                keyboard = [[{"text": f"📊 วิเคราะห์ {multi[0]}", "callback_data": f"analyze:{multi[0]}"}]]
+            else:
+                days = _parse_graph_days(source)
+                from services.telegram_chart import generate_price_chart
+                photo, meta = generate_price_chart(symbol, days=days)
+                caption = _chart_caption(meta)
+                keyboard = [[
+                    {"text": "📊 วิเคราะห์ AI",  "callback_data": f"analyze:{symbol}"},
+                    {"text": "➕ เพิ่ม Port",     "callback_data": f"port_add:{symbol}"},
+                ]]
+
             # เรนเดอร์สำเร็จ (symbol ใช้ได้) แล้วค่อยหักโควตา
             if telegram_user_id and db:
                 from services.usage import try_consume
                 from services.tiers import quota_for
                 try_consume(db, telegram_user_id, "graph", quota_for(db, telegram_user_id, "graph"))
-            return TelegramReply(
-                photo_bytes=photo,
-                caption=_chart_caption(meta),
-                keyboard=[[
-                    {"text": "📊 วิเคราะห์ AI",  "callback_data": f"analyze:{symbol}"},
-                    {"text": "➕ เพิ่ม Port",     "callback_data": f"port_add:{symbol}"},
-                ]],
-            )
+            return TelegramReply(photo_bytes=photo, caption=caption, keyboard=keyboard)
 
         if intent == "portfolio":
+            sub = args.strip().lower()
+            if sub.startswith("chart") or sub.startswith("pie") or sub in {"กราฟ", "รูป"}:
+                return _portfolio_chart_reply(telegram_user_id, db)
             reply_text = _format_portfolio_command(args, telegram_user_id, db)
             keyboard = None
             if telegram_user_id and db and not args.strip().startswith("add"):
-                keyboard = [[{"text": "🔄 Refresh", "callback_data": "port_view"}]]
+                keyboard = [[
+                    {"text": "🔄 Refresh", "callback_data": "port_view"},
+                    {"text": "📊 กราฟพอร์ต", "callback_data": "port_chart"},
+                ]]
             return TelegramReply(text=reply_text, keyboard=keyboard)
 
         if intent == "watch":
@@ -1250,6 +1394,7 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
         "chart":      "chart_symbol",
         "port_view":  "portfolio",
         "port_add":   "portfolio",
+        "port_chart": "portfolio",
         "watch_view": "watch",
         "news":       "news",
         "ipo":        "ipo",
@@ -1260,12 +1405,17 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
         "menu":       "menu",
         "help":       "help",
         "me":         "my_status",
+        "alert_list": "alert",
     }
     intent = action_intent_map.get(action, "unknown")
 
-    # For port_add from button, synthesize "add SYMBOL" args
+    # Synthesize args for buttons that map onto a subcommand
     if action == "port_add":
         args_str = f"add {arg}" if arg else ""
+    elif action == "port_chart":
+        args_str = "chart"
+    elif action == "alert_list":
+        args_str = "list"
     else:
         args_str = arg
 

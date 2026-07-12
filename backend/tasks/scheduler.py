@@ -387,6 +387,17 @@ def create_scheduler() -> BackgroundScheduler:
             next_run_time=datetime.now(timezone.utc),
         )
 
+    if settings.telegram_alerts_enabled and settings.telegram_bot_token:
+        from services.alerts import check_price_alerts
+        scheduler.add_job(
+            check_price_alerts,
+            trigger=IntervalTrigger(minutes=max(1, settings.telegram_alert_check_interval_min)),
+            id="price_alerts",
+            replace_existing=True,
+            misfire_grace_time=600,
+            coalesce=True,
+        )
+
     if settings.calendar_alert_enabled:
         scheduler.add_job(
             check_and_alert_calendar_events,
