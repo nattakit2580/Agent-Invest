@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import hashlib
 import secrets
 from datetime import datetime, timezone
 from typing import Optional
@@ -72,6 +73,16 @@ def _require_admin(x_admin_token: str | None = Header(None, alias="X-Admin-Token
         raise HTTPException(status_code=401, detail="Invalid X-Admin-Token")
 
 
+def _telegram_safe_secret(raw: str) -> str:
+    """Telegram's secret_token only allows [A-Za-z0-9_-], 1-256 chars. Render's
+    generateValue (or any operator-typed secret) may contain other characters
+    (setWebhook then rejects it outright with 'unallowed characters'), so derive
+    a guaranteed-compliant token from whatever raw value is configured. Used
+    identically on the register side and the incoming-header check, so they
+    always agree regardless of what the raw secret actually looks like."""
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
 def _verify_webhook_secret(secret_header: str | None) -> None:
     settings = get_settings()
     # Fail closed: an unconfigured secret must not mean "accept anything", or an
@@ -82,7 +93,8 @@ def _verify_webhook_secret(secret_header: str | None) -> None:
             status_code=503,
             detail="Telegram webhook secret is not configured (set TELEGRAM_WEBHOOK_SECRET_TOKEN).",
         )
-    if not secret_header or not secrets.compare_digest(secret_header, settings.telegram_webhook_secret_token):
+    expected = _telegram_safe_secret(settings.telegram_webhook_secret_token)
+    if not secret_header or not secrets.compare_digest(secret_header, expected):
         raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret token")
 
 
@@ -254,10 +266,11 @@ def register_webhook(req: TelegramWebhookRegisterRequest):
     client = TelegramClient()
     if not client.bot_configured:
         raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN is required before registering webhook.")
+    secret = _telegram_safe_secret(settings.telegram_webhook_secret_token) if settings.telegram_webhook_secret_token else None
     try:
         return client.set_webhook(
             req.webhook_url,
-            secret_token=settings.telegram_webhook_secret_token or None,
+            secret_token=secret,
             drop_pending_updates=req.drop_pending_updates,
         )
     except TelegramSendError as exc:
