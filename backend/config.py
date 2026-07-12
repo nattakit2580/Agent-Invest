@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     telegram_translate_news: bool = True     # แปลหัวข้อ/สรุปข่าวเป็นไทยก่อนส่ง
     telegram_private_ai_chat: bool = True    # private chat: free-text คุยกับ AI (รู้ portfolio)
     telegram_bot_username: str = ""
+    # โควตาต่อ user ต่อวัน (0 = ไม่จำกัด) ใช้กับ private chat
+    telegram_daily_analyze_quota: int = 2    # /analyze — AI วิเคราะห์เต็ม
+    telegram_daily_graph_quota: int = 10     # /graph — กราฟพร้อมแนวโน้ม
+    telegram_daily_chat_quota: int = 20      # free-text AI chat (tier free)
+    telegram_pro_multiplier: int = 10        # tier pro = โควตา free x เท่านี้
+    telegram_alerts_enabled: bool = True
+    telegram_alert_check_interval_min: int = 20   # ทุกกี่นาทีเช็คราคาแจ้งเตือน
+    telegram_max_alerts_per_user: int = 10        # จำนวน alert active สูงสุด/คน (tier vip ไม่จำกัด)
+    telegram_unlimited_user_ids: str = ""    # csv ของ telegram user id ที่ไม่จำกัด + เป็นแอดมินตั้ง tier ได้
     telegram_public_news_limit: int = 3
     telegram_public_watchlist_limit: int = 3
     telegram_private_report_max_assets: int = 20
