@@ -124,6 +124,8 @@ def telegram_status():
         channel_id=client_status.channel_id,
         community_chat_id=client_status.community_chat_id,
         paid_chat_id=client_status.paid_chat_id,
+        bot2_configured=client_status.bot2_configured,
+        bot2_channel_id=client_status.bot2_channel_id,
         daily_report_enabled=client_status.daily_report_enabled,
         community_report_enabled=client_status.community_report_enabled,
         paid_report_enabled=client_status.paid_report_enabled,
@@ -211,23 +213,33 @@ def run_daily_monitor(force: bool = False, db: Session = Depends(get_db)):
 
     send_daily_telegram_monitor(force=force)
 
-    db.expire_all()  # re-read after the send wrote its MonitorReport row
-    latest = (
-        db.query(MonitorReport)
-        .filter(
-            MonitorReport.report_date == _local_today(),
-            MonitorReport.report_type.in_(["daily_monitor", "bot2_monitor"]),
+    db.expire_all()  # re-read after the send wrote its MonitorReport rows
+    today = _local_today()
+
+    def _latest(report_type: str) -> dict | None:
+        row = (
+            db.query(MonitorReport)
+            .filter(MonitorReport.report_date == today, MonitorReport.report_type == report_type)
+            .order_by(desc(MonitorReport.created_at))
+            .first()
         )
-        .order_by(desc(MonitorReport.created_at))
-        .first()
-    )
+        if not row:
+            return None
+        return {"status": row.status, "error": row.error, "channel_id": row.channel_id}
+
+    settings = get_settings()
     return {
         "ok": True,
         "sent_now": True,
         "forced": force,
-        "report_date": _local_today(),
-        "status": latest.status if latest else "unknown",
-        "error": latest.error if latest else None,
+        "report_date": today,
+        # per-group outcome so you can see all targets in one call
+        "group1_bot1": _latest("daily_monitor"),
+        "group2_bot2": _latest("bot2_monitor"),
+        "bot2_configured": bool(settings.telegram_bot2_token and settings.telegram_bot2_channel_id),
+        "community_enabled": bool(
+            settings.telegram_community_report_enabled and settings.telegram_community_chat_id
+        ),
     }
 
 

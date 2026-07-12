@@ -62,6 +62,12 @@ services:
         value: "false"
       - key: TELEGRAM_ADMIN_TOKEN
         sync: false
+      # กลุ่มที่ 2 — bot คนละตัว (bot2) ส่งรายงานรายวันขนานกับ bot1
+      # ตั้งทั้งคู่ให้ครบถ้าต้องการส่งเข้ากลุ่มที่ 2 (บอท bot2 ต้องอยู่ในกลุ่มนั้น)
+      - key: TELEGRAM_BOT2_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT2_CHANNEL_ID
+        sync: false
       # Required: webhook now fails closed without it. Auto-generated so no human
       # ever handles it; after deploy call POST /telegram/webhook/register to
       # push this secret to Telegram (register reads it from this env).
