@@ -13,7 +13,7 @@ from fetchers.news_fetcher import fetch_all_news
 from fetchers.economic_fetcher import fetch_economic_indicators
 from fetchers.calendar_fetcher import refresh_calendar_events
 from services.monitor_report import build_daily_monitor_report, render_public_monitor_message
-from services.telegram_client import TelegramClient, TelegramSendError, broadcast_parallel
+from services.telegram_client import TelegramClient, TelegramSendError, broadcast_parallel, normalize_chat_id
 from utils.accuracy import calc_direction_from_prices, calc_accuracy_score, build_evaluation
 from config import get_settings
 
@@ -89,9 +89,9 @@ EVENT_TYPE_LABELS = {
 def _alert_target_chat_ids() -> list[str]:
     ids: list[str] = []
     if settings.telegram_daily_report_enabled and settings.telegram_channel_id:
-        ids.append(settings.telegram_channel_id)
+        ids.append(normalize_chat_id(settings.telegram_channel_id))
     if settings.telegram_paid_report_enabled and settings.telegram_paid_chat_id:
-        ids.append(settings.telegram_paid_chat_id)
+        ids.append(normalize_chat_id(settings.telegram_paid_chat_id))
     # de-dup while preserving order
     return list(dict.fromkeys(ids))
 
@@ -237,14 +237,15 @@ def _log_and_send_bot2(report: dict, message: str, db: Session) -> None:
     if not settings.telegram_bot2_token or not settings.telegram_bot2_channel_id:
         return
 
+    bot2_chat_id = normalize_chat_id(settings.telegram_bot2_channel_id)
     client = TelegramClient(
         bot_token=settings.telegram_bot2_token,
-        channel_id=settings.telegram_bot2_channel_id,
+        channel_id=bot2_chat_id,
     )
     row = MonitorReport(
         report_date=report["report_date"],
         report_type="bot2_monitor",
-        channel_id=settings.telegram_bot2_channel_id,
+        channel_id=bot2_chat_id,
         title=report["title"],
         categories=report["categories"],
         watchlist=report["watchlist"],

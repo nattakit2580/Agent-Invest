@@ -48,6 +48,27 @@ def _chunk_message(text: str, limit: int = 3900) -> list[str]:
     return chunks
 
 
+def normalize_chat_id(chat_id: str | None) -> str | None:
+    """Telegram supergroup/channel ids have the form '-100' + digits. A common
+    config mistake is storing them as a positive number (the leading '-' dropped),
+    which makes every send fail with 'Bad Request: chat not found'. Restore the
+    sign for that specific signature so a fat-fingered env var still works.
+
+    Leaves @usernames, already-signed ids, and ordinary numbers untouched. Apply
+    ONLY to configured broadcast targets (channels/groups) — never to per-user
+    reply chat ids, whose positive sign is correct.
+    """
+    if not chat_id:
+        return chat_id
+    s = str(chat_id).strip()
+    if s.startswith("-") or s.startswith("@"):
+        return s
+    # '-100' + 10-digit internal id => 13-digit positive form starting with '100'
+    if s.isdigit() and s.startswith("100") and len(s) >= 13:
+        return "-" + s
+    return s
+
+
 def _mask_channel(channel_id: str | None) -> str | None:
     if not channel_id:
         return None
@@ -60,7 +81,9 @@ class TelegramClient:
     def __init__(self, bot_token: str | None = None, channel_id: str | None = None):
         settings = get_settings()
         self.bot_token = bot_token if bot_token is not None else settings.telegram_bot_token
-        self.channel_id = channel_id if channel_id is not None else settings.telegram_channel_id
+        # Only the configured-channel fallback is normalized (a broadcast target);
+        # an explicitly-passed channel_id may be a per-user reply id and is left as-is.
+        self.channel_id = channel_id if channel_id is not None else normalize_chat_id(settings.telegram_channel_id)
 
     @property
     def bot_configured(self) -> bool:
@@ -267,10 +290,10 @@ def broadcast_parallel(
     targets: list[tuple[str, str, str]] = []  # (label, token, chat_id)
 
     if settings.telegram_bot_token and settings.telegram_channel_id:
-        targets.append(("bot1", settings.telegram_bot_token, settings.telegram_channel_id))
+        targets.append(("bot1", settings.telegram_bot_token, normalize_chat_id(settings.telegram_channel_id)))
 
     for i, (token, chat_id) in enumerate(extra_targets or [], start=2):
-        targets.append((f"extra{i}", token, chat_id))
+        targets.append((f"extra{i}", token, normalize_chat_id(chat_id)))
 
     if not targets:
         return {}

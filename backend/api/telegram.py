@@ -25,7 +25,7 @@ from models.schemas import (
 )
 from services.monitor_report import build_daily_monitor_report, render_public_monitor_message
 from services.telegram_bot import build_telegram_analytics, handle_telegram_update
-from services.telegram_client import TelegramClient, TelegramNotConfiguredError, TelegramSendError
+from services.telegram_client import TelegramClient, TelegramNotConfiguredError, TelegramSendError, normalize_chat_id
 
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
@@ -102,13 +102,13 @@ def _chat_id_for_target(req: TelegramBroadcastRequest) -> tuple[str, str]:
     settings = get_settings()
     target = (req.target or "channel").lower()
     if req.chat_id:
-        return req.chat_id, target
+        return normalize_chat_id(req.chat_id), target
     if target == "channel":
-        return settings.telegram_channel_id, target
+        return normalize_chat_id(settings.telegram_channel_id), target
     if target == "community":
-        return settings.telegram_community_chat_id, target
+        return normalize_chat_id(settings.telegram_community_chat_id), target
     if target == "paid":
-        return settings.telegram_paid_chat_id, target
+        return normalize_chat_id(settings.telegram_paid_chat_id), target
     raise HTTPException(status_code=400, detail="target must be channel, community, or paid")
 
 
