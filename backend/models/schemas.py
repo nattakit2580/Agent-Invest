@@ -103,6 +103,8 @@ class TelegramStatusResponse(BaseModel):
     channel_id: Optional[str]
     community_chat_id: Optional[str] = None
     paid_chat_id: Optional[str] = None
+    bot2_configured: bool = False
+    bot2_channel_id: Optional[str] = None
     daily_report_enabled: bool
     community_report_enabled: bool = False
     paid_report_enabled: bool = False

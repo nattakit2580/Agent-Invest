@@ -24,6 +24,8 @@ class TelegramStatus:
     channel_id: str | None
     community_chat_id: str | None
     paid_chat_id: str | None
+    bot2_configured: bool
+    bot2_channel_id: str | None
     daily_report_enabled: bool
     community_report_enabled: bool
     paid_report_enabled: bool
@@ -101,6 +103,8 @@ class TelegramClient:
             channel_id=_mask_channel(self.channel_id),
             community_chat_id=_mask_channel(settings.telegram_community_chat_id),
             paid_chat_id=_mask_channel(settings.telegram_paid_chat_id),
+            bot2_configured=bool(settings.telegram_bot2_token and settings.telegram_bot2_channel_id),
+            bot2_channel_id=_mask_channel(settings.telegram_bot2_channel_id),
             daily_report_enabled=settings.telegram_daily_report_enabled,
             community_report_enabled=settings.telegram_community_report_enabled,
             paid_report_enabled=settings.telegram_paid_report_enabled,

@@ -53,7 +53,20 @@ services:
         sync: false
       - key: TELEGRAM_CHANNEL_ID
         sync: false
+      # กลุ่ม community — ตั้ง chat id ของกลุ่ม (ขึ้นต้น -100 สำหรับ supergroup) แล้ว
+      # เปิด TELEGRAM_COMMUNITY_REPORT_ENABLED=true เพื่อให้รายงานรายวันเข้ากลุ่มด้วย
+      # (บอทต้องเป็นสมาชิก/แอดมินของกลุ่มนั้น)
+      - key: TELEGRAM_COMMUNITY_CHAT_ID
+        sync: false
+      - key: TELEGRAM_COMMUNITY_REPORT_ENABLED
+        value: "false"
       - key: TELEGRAM_ADMIN_TOKEN
+        sync: false
+      # กลุ่มที่ 2 — bot คนละตัว (bot2) ส่งรายงานรายวันขนานกับ bot1
+      # ตั้งทั้งคู่ให้ครบถ้าต้องการส่งเข้ากลุ่มที่ 2 (บอท bot2 ต้องอยู่ในกลุ่มนั้น)
+      - key: TELEGRAM_BOT2_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT2_CHANNEL_ID
         sync: false
       # Required: webhook now fails closed without it. Auto-generated so no human
       # ever handles it; after deploy call POST /telegram/webhook/register to
@@ -80,3 +93,24 @@ services:
         value: "1"
       - key: BACKEND_URL
         value: https://agent-invest-backend.onrender.com
+
+  # Daily report trigger. The backend runs on Render free tier and spins down
+  # when idle, so its in-process 08:30 scheduler never fires unless the service
+  # happens to be awake. This cron job runs on Render's own schedule regardless,
+  # and its POST both wakes the backend and triggers the send (which dedups, so
+  # it never double-sends if the in-process cron also ran).
+  # 08:30 Asia/Bangkok == 01:30 UTC (Render cron schedules are UTC).
+  - type: cron
+    name: agent-invest-daily-trigger
+    runtime: image
+    image:
+      url: curlimages/curl:8.11.1
+    schedule: "30 1 * * *"
+    plan: free
+    dockerCommand: >-
+      curl -fsS --retry 3 --retry-delay 30 --max-time 300 -X POST
+      -H "X-Admin-Token: $TELEGRAM_ADMIN_TOKEN"
+      https://agent-invest-backend.onrender.com/telegram/monitor/run
+    envVars:
+      - key: TELEGRAM_ADMIN_TOKEN
+        sync: false

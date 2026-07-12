@@ -320,11 +320,22 @@ def send_daily_telegram_monitor(force: bool = False):
         db.commit()
         db.refresh(row)
 
-        results = broadcast_parallel(message, extra_targets=[])
-        bot1_ok = results.get("bot1") == "ok"
-        row.status = "sent" if bot1_ok else "failed"
-        row.sent_at = datetime.now(timezone.utc) if bot1_ok else None
-        row.error = None if bot1_ok else results.get("bot1", "no target configured")
+        # ปลายทางเพิ่มเติมนอกจาก channel หลัก (bot1): กลุ่ม community + ห้อง paid
+        # ใช้ bot token เดียวกัน — บอทต้องเป็นสมาชิก/แอดมินของกลุ่มนั้นด้วย
+        extra_targets: list[tuple[str, str]] = []
+        if settings.telegram_community_report_enabled and settings.telegram_community_chat_id:
+            extra_targets.append((settings.telegram_bot_token, settings.telegram_community_chat_id))
+        if settings.telegram_paid_report_enabled and settings.telegram_paid_chat_id:
+            extra_targets.append((settings.telegram_bot_token, settings.telegram_paid_chat_id))
+
+        results = broadcast_parallel(message, extra_targets=extra_targets)
+        # ถือว่าสำเร็จถ้ามีปลายทางใดส่งได้อย่างน้อยหนึ่ง (รองรับกรณีตั้งเฉพาะกลุ่ม
+        # โดยไม่ได้ตั้ง channel — เดิม bot1_ok จะ false แล้ว mark failed ทั้งที่กลุ่มได้รับแล้ว)
+        any_ok = any(status == "ok" for status in results.values())
+        failed = [f"{label}: {status}" for label, status in results.items() if status != "ok"]
+        row.status = "sent" if any_ok else "failed"
+        row.sent_at = datetime.now(timezone.utc) if any_ok else None
+        row.error = None if any_ok else ("; ".join(failed) or "no target configured")
         db.commit()
         for label, status in results.items():
             icon = "✓" if status == "ok" else "✗"

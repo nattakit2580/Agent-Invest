@@ -124,6 +124,8 @@ def telegram_status():
         channel_id=client_status.channel_id,
         community_chat_id=client_status.community_chat_id,
         paid_chat_id=client_status.paid_chat_id,
+        bot2_configured=client_status.bot2_configured,
+        bot2_channel_id=client_status.bot2_channel_id,
         daily_report_enabled=client_status.daily_report_enabled,
         community_report_enabled=client_status.community_report_enabled,
         paid_report_enabled=client_status.paid_report_enabled,
@@ -190,6 +192,55 @@ def send_daily_report(req: TelegramReportRequest, db: Session = Depends(get_db))
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.post("/monitor/run", dependencies=[Depends(_require_admin)])
+def run_daily_monitor(force: bool = False, db: Session = Depends(get_db)):
+    """Trigger the scheduled daily monitor on demand — the reliable path for a
+    Render free-tier deploy where the web service spins down and the in-process
+    cron never fires at 08:30. An external scheduler (Render Cron Job) POSTs here
+    daily; the wake-up from this very request boots the service, then the send
+    runs. send_daily_telegram_monitor() dedups on today's report, so this is safe
+    even if the in-process cron/catch-up also fired.
+
+    Returns whether a send happened this call and today's report status so the
+    caller (and logs) can see the outcome."""
+    from tasks.scheduler import send_daily_telegram_monitor, _already_sent_today, _local_today
+
+    already = _already_sent_today(db)
+    if already and not force:
+        return {"ok": True, "sent_now": False, "already_sent_today": True, "report_date": _local_today()}
+
+    send_daily_telegram_monitor(force=force)
+
+    db.expire_all()  # re-read after the send wrote its MonitorReport rows
+    today = _local_today()
+
+    def _latest(report_type: str) -> dict | None:
+        row = (
+            db.query(MonitorReport)
+            .filter(MonitorReport.report_date == today, MonitorReport.report_type == report_type)
+            .order_by(desc(MonitorReport.created_at))
+            .first()
+        )
+        if not row:
+            return None
+        return {"status": row.status, "error": row.error, "channel_id": row.channel_id}
+
+    settings = get_settings()
+    return {
+        "ok": True,
+        "sent_now": True,
+        "forced": force,
+        "report_date": today,
+        # per-group outcome so you can see all targets in one call
+        "group1_bot1": _latest("daily_monitor"),
+        "group2_bot2": _latest("bot2_monitor"),
+        "bot2_configured": bool(settings.telegram_bot2_token and settings.telegram_bot2_channel_id),
+        "community_enabled": bool(
+            settings.telegram_community_report_enabled and settings.telegram_community_chat_id
+        ),
+    }
 
 
 @router.post("/broadcast", response_model=MonitorReportResponse, dependencies=[Depends(_require_admin)])
