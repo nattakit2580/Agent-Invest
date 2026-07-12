@@ -192,6 +192,45 @@ def send_daily_report(req: TelegramReportRequest, db: Session = Depends(get_db))
     return row
 
 
+@router.post("/monitor/run", dependencies=[Depends(_require_admin)])
+def run_daily_monitor(force: bool = False, db: Session = Depends(get_db)):
+    """Trigger the scheduled daily monitor on demand — the reliable path for a
+    Render free-tier deploy where the web service spins down and the in-process
+    cron never fires at 08:30. An external scheduler (Render Cron Job) POSTs here
+    daily; the wake-up from this very request boots the service, then the send
+    runs. send_daily_telegram_monitor() dedups on today's report, so this is safe
+    even if the in-process cron/catch-up also fired.
+
+    Returns whether a send happened this call and today's report status so the
+    caller (and logs) can see the outcome."""
+    from tasks.scheduler import send_daily_telegram_monitor, _already_sent_today, _local_today
+
+    already = _already_sent_today(db)
+    if already and not force:
+        return {"ok": True, "sent_now": False, "already_sent_today": True, "report_date": _local_today()}
+
+    send_daily_telegram_monitor(force=force)
+
+    db.expire_all()  # re-read after the send wrote its MonitorReport row
+    latest = (
+        db.query(MonitorReport)
+        .filter(
+            MonitorReport.report_date == _local_today(),
+            MonitorReport.report_type.in_(["daily_monitor", "bot2_monitor"]),
+        )
+        .order_by(desc(MonitorReport.created_at))
+        .first()
+    )
+    return {
+        "ok": True,
+        "sent_now": True,
+        "forced": force,
+        "report_date": _local_today(),
+        "status": latest.status if latest else "unknown",
+        "error": latest.error if latest else None,
+    }
+
+
 @router.post("/broadcast", response_model=MonitorReportResponse, dependencies=[Depends(_require_admin)])
 def send_broadcast(req: TelegramBroadcastRequest, db: Session = Depends(get_db)):
     client = TelegramClient()

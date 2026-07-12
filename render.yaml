@@ -87,3 +87,24 @@ services:
         value: "1"
       - key: BACKEND_URL
         value: https://agent-invest-backend.onrender.com
+
+  # Daily report trigger. The backend runs on Render free tier and spins down
+  # when idle, so its in-process 08:30 scheduler never fires unless the service
+  # happens to be awake. This cron job runs on Render's own schedule regardless,
+  # and its POST both wakes the backend and triggers the send (which dedups, so
+  # it never double-sends if the in-process cron also ran).
+  # 08:30 Asia/Bangkok == 01:30 UTC (Render cron schedules are UTC).
+  - type: cron
+    name: agent-invest-daily-trigger
+    runtime: image
+    image:
+      url: curlimages/curl:8.11.1
+    schedule: "30 1 * * *"
+    plan: free
+    dockerCommand: >-
+      curl -fsS --retry 3 --retry-delay 30 --max-time 300 -X POST
+      -H "X-Admin-Token: $TELEGRAM_ADMIN_TOKEN"
+      https://agent-invest-backend.onrender.com/telegram/monitor/run
+    envVars:
+      - key: TELEGRAM_ADMIN_TOKEN
+        sync: false
