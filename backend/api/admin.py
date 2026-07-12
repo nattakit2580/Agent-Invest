@@ -6,6 +6,8 @@ admin request; there is no session/token to keep this simple.
 """
 from __future__ import annotations
 
+import secrets
+
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
@@ -23,7 +25,15 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 def _check_password(password: str | None) -> None:
     expected = get_settings().admin_password
-    if not password or password != expected:
+    # Fail closed: with no password configured, deny everything (never treat an
+    # empty server-side password as "auth disabled / accept all").
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin auth is not configured on the server (set ADMIN_PASSWORD).",
+        )
+    # Constant-time compare to avoid leaking the password via response timing.
+    if not password or not secrets.compare_digest(password, expected):
         raise HTTPException(status_code=401, detail="รหัสผ่านไม่ถูกต้อง")
 
 

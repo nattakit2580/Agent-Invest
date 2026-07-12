@@ -55,6 +55,11 @@ services:
         sync: false
       - key: TELEGRAM_ADMIN_TOKEN
         sync: false
+      # Required: webhook now fails closed without it. Auto-generated so no human
+      # ever handles it; after deploy call POST /telegram/webhook/register to
+      # push this secret to Telegram (register reads it from this env).
+      - key: TELEGRAM_WEBHOOK_SECRET_TOKEN
+        generateValue: true
       - key: TELEGRAM_TIMEZONE
         value: Asia/Bangkok
       - key: TELEGRAM_DAILY_REPORT_ENABLED

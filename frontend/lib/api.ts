@@ -202,8 +202,15 @@ export const getAccuracy = (params?: Record<string, string>) =>
 
 export const getMarketData = (symbol: string) =>
   api.get(`/analyze/market/${symbol}`).then((r) => r.data);
-export const getTelegramAnalytics = (params?: Record<string, string | number>) =>
-  api.get<TelegramAnalytics>("/telegram/analytics", { params }).then((r) => r.data);
+// Requires the admin password (same secret as the /admin page) — the analytics
+// payload contains private message text, usernames and Telegram user ids.
+export const getTelegramAnalytics = (password: string, params?: Record<string, string | number>) =>
+  api
+    .get<TelegramAnalytics>("/telegram/analytics", {
+      params,
+      headers: { "X-Admin-Password": password },
+    })
+    .then((r) => r.data);
 
 export const getEconomicIndicators = () =>
   api.get<EconomicResponse>("/economic/indicators").then((r) => r.data);

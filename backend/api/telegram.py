@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -7,6 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from api.admin import require_admin as require_admin_password
 from config import get_settings
 from database import get_db
 from fetchers.agenda_fetcher import split_csv
@@ -59,13 +61,28 @@ def _create_report_row(
 
 def _require_admin(x_admin_token: str | None = Header(None, alias="X-Admin-Token")) -> None:
     settings = get_settings()
-    if settings.telegram_admin_token and x_admin_token != settings.telegram_admin_token:
+    # Fail closed: if no admin token is configured, reject every request rather
+    # than letting these write/broadcast routes run unauthenticated.
+    if not settings.telegram_admin_token:
+        raise HTTPException(
+            status_code=503,
+            detail="X-Admin-Token auth is not configured on the server (set TELEGRAM_ADMIN_TOKEN).",
+        )
+    if not x_admin_token or not secrets.compare_digest(x_admin_token, settings.telegram_admin_token):
         raise HTTPException(status_code=401, detail="Invalid X-Admin-Token")
 
 
 def _verify_webhook_secret(secret_header: str | None) -> None:
     settings = get_settings()
-    if settings.telegram_webhook_secret_token and secret_header != settings.telegram_webhook_secret_token:
+    # Fail closed: an unconfigured secret must not mean "accept anything", or an
+    # attacker could POST forged Telegram updates with an arbitrary from.id and
+    # act as any user (portfolio/watchlist are keyed solely on that id).
+    if not settings.telegram_webhook_secret_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram webhook secret is not configured (set TELEGRAM_WEBHOOK_SECRET_TOKEN).",
+        )
+    if not secret_header or not secrets.compare_digest(secret_header, settings.telegram_webhook_secret_token):
         raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret token")
 
 
@@ -107,7 +124,11 @@ def telegram_status():
     )
 
 
-@router.post("/reports/preview", response_model=TelegramReportPreviewResponse)
+@router.post(
+    "/reports/preview",
+    response_model=TelegramReportPreviewResponse,
+    dependencies=[Depends(_require_admin)],
+)
 def preview_daily_report(req: TelegramReportRequest):
     return build_daily_monitor_report(
         symbols=req.symbols,
@@ -117,7 +138,11 @@ def preview_daily_report(req: TelegramReportRequest):
     )
 
 
-@router.post("/reports/send", response_model=MonitorReportResponse)
+@router.post(
+    "/reports/send",
+    response_model=MonitorReportResponse,
+    dependencies=[Depends(_require_admin)],
+)
 def send_daily_report(req: TelegramReportRequest, db: Session = Depends(get_db)):
     client = TelegramClient()
     if not client.configured:
@@ -261,7 +286,11 @@ def webhook_info():
         raise HTTPException(status_code=502, detail=str(exc))
 
 
-@router.get("/analytics", response_model=TelegramAnalyticsResponse)
+@router.get(
+    "/analytics",
+    response_model=TelegramAnalyticsResponse,
+    dependencies=[Depends(require_admin_password)],
+)
 def telegram_analytics(
     days: int = Query(7, ge=1, le=365),
     chat_id: Optional[str] = Query(None),
@@ -271,7 +300,11 @@ def telegram_analytics(
     return build_telegram_analytics(db, days=days, chat_id=chat_id, limit=limit)
 
 
-@router.get("/reports", response_model=list[MonitorReportResponse])
+@router.get(
+    "/reports",
+    response_model=list[MonitorReportResponse],
+    dependencies=[Depends(require_admin_password)],
+)
 def list_monitor_reports(
     status: Optional[str] = Query(None),
     limit: int = Query(50, le=200),
@@ -284,7 +317,11 @@ def list_monitor_reports(
     return query.offset(offset).limit(limit).all()
 
 
-@router.get("/reports/{report_id}", response_model=MonitorReportResponse)
+@router.get(
+    "/reports/{report_id}",
+    response_model=MonitorReportResponse,
+    dependencies=[Depends(require_admin_password)],
+)
 def get_monitor_report(report_id: str, db: Session = Depends(get_db)):
     row = db.query(MonitorReport).filter(MonitorReport.id == report_id).first()
     if not row:

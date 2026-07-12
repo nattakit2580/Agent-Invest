@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { format } from "date-fns";
 import { BarChart, Bar, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Bot, Hash, MessageCircle, RefreshCw, Send, Users } from "lucide-react";
-import { getTelegramAnalytics, type TelegramAnalytics, type TelegramCountItem } from "@/lib/api";
+import { Bot, Hash, Lock, MessageCircle, RefreshCw, Send, Users } from "lucide-react";
+import { adminLogin, getTelegramAnalytics, type TelegramAnalytics, type TelegramCountItem } from "@/lib/api";
+
+// Same sessionStorage key as the /admin page, so one admin login unlocks both.
+const PW_KEY = "agent_invest_admin_pw";
 
 function StatCard({ title, value, sub, icon }: { title: string; value: string | number; sub?: string; icon: ReactNode }) {
   return (
@@ -62,22 +65,97 @@ function DayButton({ active, children, onClick }: { active: boolean; children: R
 export default function TelegramDashboardPage() {
   const [days, setDays] = useState(7);
   const [analytics, setAnalytics] = useState<TelegramAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = () => {
-    setLoading(true);
-    setError(null);
-    getTelegramAnalytics({ days, limit: 12 })
-      .then(setAnalytics)
-      .catch((err) => setError(err?.response?.data?.detail || err?.message || "Failed to load Telegram analytics"))
-      .finally(() => setLoading(false));
+  const [password, setPassword] = useState("");
+  const [authed, setAuthed] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
+  const load = useCallback(
+    (pw: string, windowDays: number) => {
+      setLoading(true);
+      setError(null);
+      getTelegramAnalytics(pw, { days: windowDays, limit: 12 })
+        .then(setAnalytics)
+        .catch((err) => {
+          if (err?.response?.status === 401) {
+            // stale/incorrect password — drop back to the login screen
+            sessionStorage.removeItem(PW_KEY);
+            setAuthed(false);
+            setAnalytics(null);
+          } else {
+            setError(err?.response?.data?.detail || err?.message || "Failed to load Telegram analytics");
+          }
+        })
+        .finally(() => setLoading(false));
+    },
+    []
+  );
+
+  // Resume an existing admin session on refresh.
+  useEffect(() => {
+    const saved = sessionStorage.getItem(PW_KEY);
+    if (saved) {
+      setPassword(saved);
+      setAuthed(true);
+    }
+  }, []);
+
+  // (Re)load whenever authenticated or the window changes.
+  useEffect(() => {
+    if (authed && password) load(password, days);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed, days]);
+
+  const handleLogin = async () => {
+    if (!password.trim()) return;
+    setLoggingIn(true);
+    setLoginError("");
+    try {
+      await adminLogin(password);
+      sessionStorage.setItem(PW_KEY, password);
+      setAuthed(true);
+    } catch {
+      setLoginError("รหัสผ่านไม่ถูกต้อง");
+    } finally {
+      setLoggingIn(false);
+    }
   };
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days]);
+  if (!authed) {
+    return (
+      <div className="max-w-sm mx-auto mt-24">
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-4">
+          <div className="flex items-center gap-2 text-slate-900">
+            <Lock className="w-5 h-5 text-blue-600" />
+            <h1 className="text-lg font-semibold">Telegram Dashboard</h1>
+          </div>
+          <p className="text-sm text-slate-500">
+            หน้านี้แสดงข้อความและข้อมูลผู้ใช้ Telegram — ต้องใส่รหัสผ่านผู้ดูแลระบบ
+          </p>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+            placeholder="รหัสผ่านผู้ดูแลระบบ"
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {loginError && <p className="text-sm text-red-600">{loginError}</p>}
+          <button
+            type="button"
+            onClick={handleLogin}
+            disabled={loggingIn}
+            className="w-full rounded-lg bg-blue-600 text-white py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
+          >
+            {loggingIn ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -97,7 +175,7 @@ export default function TelegramDashboardPage() {
           ))}
           <button
             type="button"
-            onClick={load}
+            onClick={() => load(password, days)}
             className="h-10 w-10 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center"
             aria-label="Refresh"
           >
