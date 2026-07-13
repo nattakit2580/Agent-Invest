@@ -299,40 +299,94 @@ def send_broadcast(req: TelegramBroadcastRequest, db: Session = Depends(get_db))
 
 @router.post("/commands/register", dependencies=[Depends(_require_admin)])
 def register_commands():
-    """Re-register the "/" command menu (setMyCommands) + the private-chat Menu
-    button — so the guided command list can be refreshed on demand without a
-    redeploy after commands change."""
+    """(Re)register the "/" command menu across the scopes that actually govern
+    what users see, so a stale/empty specific scope can't hide the menu:
+      - default
+      - all_private_chats  (governs the "/" popup in DMs)
+      - all_group_chats
+    Also clears any language-specific overrides (th/en) that would win over the
+    default, and sets the private-chat Menu button."""
     from services.telegram_bot import BOT_COMMANDS
     client = TelegramClient()
     if not client.bot_configured:
         raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN is required.")
+
+    results: dict[str, Any] = {}
+    scopes = [None, {"type": "all_private_chats"}, {"type": "all_group_chats"}]
     try:
-        client.set_my_commands(BOT_COMMANDS)
+        for scope in scopes:
+            client.set_my_commands(BOT_COMMANDS, scope=scope)
+            results[(scope or {}).get("type", "default")] = "set"
+        # remove language-specific lists so everyone falls back to the full set
+        for lang in ("th", "en"):
+            try:
+                client.delete_my_commands(language_code=lang)
+                client.delete_my_commands(scope={"type": "all_private_chats"}, language_code=lang)
+                results[f"cleared_lang_{lang}"] = "ok"
+            except Exception:
+                results[f"cleared_lang_{lang}"] = "skip"
     except TelegramSendError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
     menu_button_ok = True
     try:
         client.set_chat_menu_button()
     except Exception:
         menu_button_ok = False
+
     return {
         "ok": True,
         "registered": len(BOT_COMMANDS),
+        "scopes": results,
         "menu_button_set": menu_button_ok,
         "commands": [c["command"] for c in BOT_COMMANDS],
     }
 
 
 @router.get("/commands", dependencies=[Depends(_require_admin)])
-def get_commands():
-    """Read the "/" command menu Telegram currently shows users (verification)."""
+def get_commands(scope: Optional[str] = Query(None), language_code: Optional[str] = Query(None)):
+    """Read the "/" command menu for a scope/language (verification).
+    scope: default | all_private_chats | all_group_chats"""
     client = TelegramClient()
     if not client.bot_configured:
         raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN is required.")
+    scope_obj = {"type": scope} if scope and scope != "default" else None
     try:
-        return client.get_my_commands()
+        return client.get_my_commands(scope=scope_obj, language_code=language_code)
     except TelegramSendError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.get("/commands/diagnose", dependencies=[Depends(_require_admin)])
+def diagnose_commands():
+    """One call to find why "/" shows nothing: which bot this token is, and how
+    many commands each scope/language currently resolves to."""
+    client = TelegramClient()
+    if not client.bot_configured:
+        raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN is required.")
+
+    def _count(**kw):
+        try:
+            return len(client.get_my_commands(**kw).get("result", []))
+        except Exception as e:
+            return f"error: {str(e)[:80]}"
+
+    me = {}
+    try:
+        me = client.get_me().get("result", {})
+    except Exception as e:
+        me = {"error": str(e)[:100]}
+
+    return {
+        "bot": {"username": me.get("username"), "id": me.get("id"), "name": me.get("first_name")},
+        "counts": {
+            "default": _count(),
+            "all_private_chats": _count(scope={"type": "all_private_chats"}),
+            "all_group_chats": _count(scope={"type": "all_group_chats"}),
+            "default_th": _count(language_code="th"),
+            "all_private_chats_th": _count(scope={"type": "all_private_chats"}, language_code="th"),
+        },
+    }
 
 
 @router.post("/webhook")

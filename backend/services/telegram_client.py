@@ -262,11 +262,30 @@ class TelegramClient:
     def get_webhook_info(self) -> dict[str, Any]:
         return self._request("getWebhookInfo", timeout=20)
 
-    def set_my_commands(self, commands: list[dict[str, str]]) -> dict[str, Any]:
-        """Register the "/" command menu shown by Telegram (both private chats and
-        groups). Idempotent — safe to call on every startup, Telegram just
-        overwrites the list."""
-        return self._request("setMyCommands", {"commands": commands}, timeout=20)
+    def set_my_commands(self, commands: list[dict[str, str]], *,
+                        scope: dict[str, Any] | None = None,
+                        language_code: str | None = None) -> dict[str, Any]:
+        """Register the "/" command menu. Without a scope this sets the DEFAULT
+        scope; a more specific scope (e.g. all_private_chats) or a language-specific
+        list overrides it, so we set several scopes explicitly to avoid a stale
+        empty scope hiding the menu."""
+        payload: dict[str, Any] = {"commands": commands}
+        if scope:
+            payload["scope"] = scope
+        if language_code:
+            payload["language_code"] = language_code
+        return self._request("setMyCommands", payload, timeout=20)
+
+    def delete_my_commands(self, *, scope: dict[str, Any] | None = None,
+                           language_code: str | None = None) -> dict[str, Any]:
+        """Clear commands for a scope/language so it falls back to the default set
+        (used to remove a stale empty override)."""
+        payload: dict[str, Any] = {}
+        if scope:
+            payload["scope"] = scope
+        if language_code:
+            payload["language_code"] = language_code
+        return self._request("deleteMyCommands", payload, timeout=20)
 
     def set_chat_menu_button(self) -> dict[str, Any]:
         """Show the clickable "Menu" button next to the message input, which opens
@@ -275,10 +294,20 @@ class TelegramClient:
         (set_my_commands) is the only entry point."""
         return self._request("setChatMenuButton", {"menu_button": {"type": "commands"}}, timeout=20)
 
-    def get_my_commands(self) -> dict[str, Any]:
-        """Read the currently-registered "/" command menu (to verify what Telegram
-        is showing users)."""
-        return self._request("getMyCommands", {}, timeout=20)
+    def get_my_commands(self, *, scope: dict[str, Any] | None = None,
+                        language_code: str | None = None) -> dict[str, Any]:
+        """Read the registered "/" command menu for a scope/language (verification)."""
+        payload: dict[str, Any] = {}
+        if scope:
+            payload["scope"] = scope
+        if language_code:
+            payload["language_code"] = language_code
+        return self._request("getMyCommands", payload, timeout=20)
+
+    def get_me(self) -> dict[str, Any]:
+        """getMe — identify which bot this token is (username, id) to rule out a
+        wrong-bot mismatch."""
+        return self._request("getMe", {}, timeout=20)
 
 
 def broadcast_parallel(
