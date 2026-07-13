@@ -99,16 +99,30 @@ services:
   # happens to be awake. This cron job runs on Render's own schedule regardless,
   # and its POST both wakes the backend and triggers the send (which dedups, so
   # it never double-sends if the in-process cron also ran).
-  # 08:30 Asia/Bangkok == 01:30 UTC (Render cron schedules are UTC).
+  #
+  # Fires every 5 min across an ~2h window (08:00-09:55 Asia/Bangkok == UTC
+  # hours 1-2) instead of a single 08:30 shot: observed in prod on 2026-07-13
+  # that a single trigger can land ~20min late (cold-start wake-up time is
+  # unpredictable on free tier), and by the time it landed nothing had sent
+  # yet. Repeated firing + the endpoint's built-in dedup means whichever
+  # invocation is first to catch the service awake sends it, and every other
+  # invocation that day is a fast no-op ("already_sent_today": true).
+  #
+  # Deliberately NO curl --retry here (unlike before): Render guarantees only
+  # one run of a given cron job at a time and queues the next scheduled run
+  # behind a still-running one, so a single invocation that internally retries
+  # for minutes would delay/skip the next 5-min slot — defeating the point.
+  # Keep each invocation short; let frequency (not in-request retries) be the
+  # resilience mechanism.
   - type: cron
     name: agent-invest-daily-trigger
     runtime: image
     image:
       url: curlimages/curl:8.11.1
-    schedule: "30 1 * * *"
+    schedule: "*/5 1-2 * * *"
     plan: free
     dockerCommand: >-
-      curl -fsS --retry 3 --retry-delay 30 --max-time 300 -X POST
+      curl -fsS --max-time 60 -X POST
       -H "X-Admin-Token: $TELEGRAM_ADMIN_TOKEN"
       https://agent-invest-backend.onrender.com/telegram/monitor/run
     envVars:
