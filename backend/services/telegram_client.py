@@ -275,6 +275,11 @@ class TelegramClient:
         (set_my_commands) is the only entry point."""
         return self._request("setChatMenuButton", {"menu_button": {"type": "commands"}}, timeout=20)
 
+    def get_my_commands(self) -> dict[str, Any]:
+        """Read the currently-registered "/" command menu (to verify what Telegram
+        is showing users)."""
+        return self._request("getMyCommands", {}, timeout=20)
+
 
 def broadcast_parallel(
     message: str,

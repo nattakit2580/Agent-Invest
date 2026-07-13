@@ -297,6 +297,44 @@ def send_broadcast(req: TelegramBroadcastRequest, db: Session = Depends(get_db))
     return row
 
 
+@router.post("/commands/register", dependencies=[Depends(_require_admin)])
+def register_commands():
+    """Re-register the "/" command menu (setMyCommands) + the private-chat Menu
+    button — so the guided command list can be refreshed on demand without a
+    redeploy after commands change."""
+    from services.telegram_bot import BOT_COMMANDS
+    client = TelegramClient()
+    if not client.bot_configured:
+        raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN is required.")
+    try:
+        client.set_my_commands(BOT_COMMANDS)
+    except TelegramSendError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    menu_button_ok = True
+    try:
+        client.set_chat_menu_button()
+    except Exception:
+        menu_button_ok = False
+    return {
+        "ok": True,
+        "registered": len(BOT_COMMANDS),
+        "menu_button_set": menu_button_ok,
+        "commands": [c["command"] for c in BOT_COMMANDS],
+    }
+
+
+@router.get("/commands", dependencies=[Depends(_require_admin)])
+def get_commands():
+    """Read the "/" command menu Telegram currently shows users (verification)."""
+    client = TelegramClient()
+    if not client.bot_configured:
+        raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN is required.")
+    try:
+        return client.get_my_commands()
+    except TelegramSendError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @router.post("/webhook")
 async def telegram_webhook(
     request: Request,
