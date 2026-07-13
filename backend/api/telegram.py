@@ -306,17 +306,22 @@ def register_commands():
       - all_group_chats
     Also clears any language-specific overrides (th/en) that would win over the
     default, and sets the private-chat Menu button."""
-    from services.telegram_bot import BOT_COMMANDS
+    from services.telegram_bot import BOT_COMMANDS, GROUP_COMMANDS
     client = TelegramClient()
     if not client.bot_configured:
         raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN is required.")
 
     results: dict[str, Any] = {}
-    scopes = [None, {"type": "all_private_chats"}, {"type": "all_group_chats"}]
+    # default + private = full list; groups = curated subset (report-only commands)
+    scope_commands = [
+        (None, BOT_COMMANDS),
+        ({"type": "all_private_chats"}, BOT_COMMANDS),
+        ({"type": "all_group_chats"}, GROUP_COMMANDS),
+    ]
     try:
-        for scope in scopes:
-            client.set_my_commands(BOT_COMMANDS, scope=scope)
-            results[(scope or {}).get("type", "default")] = "set"
+        for scope, cmds in scope_commands:
+            client.set_my_commands(cmds, scope=scope)
+            results[(scope or {}).get("type", "default")] = f"set {len(cmds)}"
         # remove language-specific lists so everyone falls back to the full set
         for lang in ("th", "en"):
             try:

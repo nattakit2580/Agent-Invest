@@ -973,6 +973,14 @@ BOT_COMMANDS: list[dict[str, str]] = [
     {"command": "help", "description": "วิธีใช้งานบอท"},
 ]
 
+# เมนู "/" สำหรับ "กลุ่ม" — เฉพาะคำสั่งที่ทำงานในกลุ่มได้จริง (ที่เหลือเด้งไป DM
+# อยู่แล้ว จึงไม่ใส่เพื่อไม่ให้สมาชิกกลุ่มสับสน) เรียงตามความถี่ใช้งาน
+_GROUP_COMMAND_NAMES = ["menu", "news", "earnings", "ipo", "ipohk", "report", "watchlist", "help"]
+GROUP_COMMANDS: list[dict[str, str]] = [
+    c for name in _GROUP_COMMAND_NAMES
+    for c in BOT_COMMANDS if c["command"] == name
+]
+
 
 # ---------------------------------------------------------------------------
 # Help text
