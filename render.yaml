@@ -51,6 +51,9 @@ services:
         sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      # ชื่อ bot (ไม่มี @) — ใช้ทำลิงก์ DM ในรายงาน + ปุ่มส่งต่อจากกลุ่ม
+      - key: TELEGRAM_BOT_USERNAME
+        value: Agent_invest_pbot
       - key: TELEGRAM_CHANNEL_ID
         sync: false
       # กลุ่ม community — ตั้ง chat id ของกลุ่ม (ขึ้นต้น -100 สำหรับ supergroup) แล้ว

@@ -521,11 +521,36 @@ def render_daily_monitor_message(report: dict[str, Any]) -> str:
         lines.extend(["", "📋 สิ่งที่ควรทำวันนี้"])
         lines.extend(f"• {action}" for action in actions[:4])
 
+    lines.extend(_command_guide_lines())
+
     lines.extend([
         "",
         "⚠️ ข้อมูลนี้สร้างโดยระบบอัตโนมัติ ไม่ใช่คำแนะนำทางการเงิน กรุณาตรวจสอบแหล่งข้อมูลก่อนตัดสินใจ",
     ])
     return "\n".join(lines)
+
+
+def _command_guide_lines() -> list[str]:
+    """แถบ 'วิธีใช้บอท' ท้ายรายงาน — สำคัญมากเมื่อรายงานส่งเข้า Channel เพราะ
+    Channel ไม่มีเมนู / ให้กด ผู้ใช้ต้องทักบอทส่วนตัวเพื่อใช้คำสั่ง เราจึงแนบลิงก์ DM ไว้."""
+    settings = get_settings()
+    if not settings.telegram_report_show_command_guide:
+        return []
+    uname = settings.telegram_bot_username.strip("@")
+    if uname:
+        header = f"🤖 อยากวิเคราะห์เอง? ทักบอท @{uname} (t.me/{uname}) แล้วพิมพ์:"
+    else:
+        header = "🤖 อยากวิเคราะห์เอง? ทักบอทส่วนตัวแล้วพิมพ์:"
+    return [
+        "",
+        "━━━━━━━━━━",
+        header,
+        "• /graph AAPL — กราฟ + แนวโน้ม (US / จีน / ฮ่องกง เช่น /graph 0700.HK)",
+        "• /analyze AAPL — วิเคราะห์ด้วย AI",
+        "• /alert AAPL 250 — ตั้งแจ้งเตือนเมื่อถึงราคา",
+        "• /portfolio — พอร์ตของคุณ + กราฟสรุป",
+        "• /me — สิทธิ์คงเหลือวันนี้ · /menu — เมนูทั้งหมด",
+    ]
 
 def render_public_monitor_message(
     report: dict[str, Any],

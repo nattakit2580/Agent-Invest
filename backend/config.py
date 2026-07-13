@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     telegram_alerts_enabled: bool = True
     telegram_alert_check_interval_min: int = 20   # ทุกกี่นาทีเช็คราคาแจ้งเตือน
     telegram_max_alerts_per_user: int = 10        # จำนวน alert active สูงสุด/คน (tier vip ไม่จำกัด)
+    telegram_report_show_command_guide: bool = True   # แนบวิธีใช้/คำสั่งท้ายรายงานรายวัน (ช่วยผู้ใช้ใน channel ที่ไม่มีเมนู /)
     telegram_unlimited_user_ids: str = ""    # csv ของ telegram user id ที่ไม่จำกัด + เป็นแอดมินตั้ง tier ได้
     telegram_public_news_limit: int = 3
     telegram_public_watchlist_limit: int = 3
