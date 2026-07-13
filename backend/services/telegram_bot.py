@@ -1433,7 +1433,8 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
     chat_type = str(chat.get("type") or "unknown")
 
     # ปุ่มที่กดในกลุ่มต้องเป็น intent ฝั่งรายงานเท่านั้น (กันปุ่มเก่า/ปุ่มส่งต่อ)
-    if chat_type != "private" and intent not in GROUP_ALLOWED_INTENTS:
+    # channel = แอดมินเท่านั้น จึงอนุญาตเต็ม เหมือน private
+    if chat_type in {"group", "supergroup"} and intent not in GROUP_ALLOWED_INTENTS:
         try:
             client.answer_callback_query(callback_id, text="ฟีเจอร์นี้ใช้ในแชทส่วนตัวกับบอทครับ")
         except Exception:
@@ -1528,7 +1529,10 @@ def handle_telegram_update(update: dict[str, Any], db: Session) -> dict[str, Any
 
     if text and _should_reply(chat.chat_type, text, intent_info):
         intent = intent_info.get("intent", "unknown")
-        if chat.chat_type != "private" and intent not in GROUP_ALLOWED_INTENTS:
+        # กลุ่ม/ซูเปอร์กรุ๊ป = report-only (คำสั่งอื่นชี้ไป DM) เพราะสมาชิกทั่วไปพิมพ์ได้
+        # channel = โพสต์ได้เฉพาะแอดมิน จึงให้รันคำสั่งได้เต็มแล้วโพสต์ผลลงช่องเลย
+        # (เช่น /graph AAPL โพสต์กราฟเข้าช่อง) — private ก็รันเต็มเช่นกัน
+        if chat.chat_type in {"group", "supergroup"} and intent not in GROUP_ALLOWED_INTENTS:
             # ในกลุ่ม: intent ที่เปิดเฉพาะส่วนตัว → ชี้ไป DM, intent ขยะ → เงียบ
             # ยกเว้น unknown: ตอบเฉพาะเมื่อ @mention บอทตรงๆ (ไม่ใช่คำสั่งหลงมาของบอทอื่น)
             bot_username = get_settings().telegram_bot_username.strip("@").lower()
