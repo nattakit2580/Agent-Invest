@@ -114,13 +114,22 @@ services:
   # for minutes would delay/skip the next 5-min slot — defeating the point.
   # Keep each invocation short; let frequency (not in-request retries) be the
   # resilience mechanism.
+  # `free` is not a valid plan for type: cron (confirmed via Render's Blueprint
+  # spec — free is web/static only; cron/private-service/background-worker all
+  # require starter+). This is why the Blueprint sync had been failing outright
+  # since this cron job was first added — it never actually deployed, so every
+  # render.yaml push since then silently never took effect on Render's side
+  # either. `starter` is the cheapest valid tier; billing is per-second of
+  # actual run time with a $1/month minimum, and each invocation here is a
+  # multi-second curl call, so real cost should sit at that $1/month floor
+  # regardless of firing 24x/day.
   - type: cron
     name: agent-invest-daily-trigger
     runtime: image
     image:
       url: curlimages/curl:8.11.1
     schedule: "*/5 1-2 * * *"
-    plan: free
+    plan: starter
     dockerCommand: >-
       curl -fsS --max-time 60 -X POST
       -H "X-Admin-Token: $TELEGRAM_ADMIN_TOKEN"
