@@ -474,16 +474,24 @@ def _ai_chat_throttled(telegram_user_id: str | None) -> bool:
     return False
 
 
-GRAPH_TIMEFRAMES = {
-    "1d": 1, "3d": 3, "1w": 7, "2w": 14, "1m": 30, "3m": 90, "6m": 180, "1y": 365,
-}
+# timeframe tokens ที่รับได้ — ตรงกับ TF_SPEC ใน telegram_chart (1w..5y)
+# รองรับพิมพ์แบบไทยด้วย เช่น "5ปี", "1 ปี"
+GRAPH_TF_TOKENS = ["1w", "1m", "3m", "6m", "1y", "2y", "3y", "4y", "5y"]
+_TF_THAI = {"1ปี": "1y", "2ปี": "2y", "3ปี": "3y", "4ปี": "4y", "5ปี": "5y",
+            "6เดือน": "6m", "3เดือน": "3m", "1เดือน": "1m"}
 
 
-def _parse_graph_days(text: str, default: int = 7) -> int:
-    """หา timeframe token ในข้อความ เช่น '1m', '3m' คืนจำนวนวัน (default = 1 สัปดาห์)."""
-    for tok, days in GRAPH_TIMEFRAMES.items():
-        if re.search(rf"\b{tok}\b", text, re.IGNORECASE):
-            return days
+def _parse_graph_timeframe(text: str, default: str = "1y") -> str:
+    """หา timeframe token ในข้อความ เช่น '1y', '5y', '6m' หรือ '5ปี' คืนคีย์ของ TF_SPEC
+    (default = 1 ปี ตามที่ผู้ใช้อยากเห็นภาพรวมระยะยาว)."""
+    low = text.lower()
+    for tok in GRAPH_TF_TOKENS:
+        if re.search(rf"\b{tok}\b", low):
+            return tok
+    compact = low.replace(" ", "")
+    for th, key in _TF_THAI.items():
+        if th in compact:
+            return key
     return default
 
 
@@ -666,12 +674,29 @@ def _quota_reached_reply(feature_th: str, used: int, limit: int) -> TelegramRepl
 def _chart_caption(meta: dict) -> str:
     cur = meta["currency"]
     sign = "+" if meta["change_pct"] >= 0 else ""
-    return (
-        f"📈 {meta['symbol']} — {meta['days']} วัน   {meta['arrow']} แนวโน้ม{meta['trend_th']}\n"
-        f"ราคา {cur}{meta['last_price']:,.2f} ({sign}{meta['change_pct']:.1f}%)\n"
-        f"ช่วง {meta['days']} วัน: สูงสุด {cur}{meta['recent_high']:,.2f} · ต่ำสุด {cur}{meta['recent_low']:,.2f}\n"
-        f"(ข้อมูลดิบ ไม่ใช่คำแนะนำการลงทุน)"
-    )
+    ma = meta.get("ma") or []
+    unit = meta.get("ma_unit", "วัน")
+    trend_reason = ""
+    if ma:
+        long_ma = ma[-1]
+        above = meta["trend_th"] == "ขาขึ้น"
+        rel = "เหนือ" if above else ("ใต้" if meta["trend_th"] == "ขาลง" else "ใกล้")
+        trend_reason = f" (ราคาอยู่{rel}เส้น MA{long_ma}{unit})"
+    lines = [
+        f"📈 {meta['symbol']} — {meta.get('tf_label', '')}   แนวโน้ม{meta['trend_th']}{trend_reason}",
+        f"ราคา {cur}{meta['last_price']:,.2f} ({sign}{meta['change_pct']:.1f}%)",
+    ]
+    res = meta.get("resistance") or []
+    sup = meta.get("support") or []
+    if res:
+        lines.append("🔴 แนวต้าน: " + " · ".join(f"{cur}{r:,.2f}" for r in res))
+    if sup:
+        lines.append("🟢 แนวรับ: " + " · ".join(f"{cur}{s:,.2f}" for s in sup))
+    if ma:
+        lines.append(f"เส้นค่าเฉลี่ย: " + " / ".join(f"MA{m}{unit}" for m in ma) + " · แท่งเทียน + Volume")
+    lines.append("เปลี่ยนช่วงเวลา: /graph " + meta['symbol'] + " 5y (1w/1m/3m/6m/1y/2y/3y/4y/5y)")
+    lines.append("(ข้อมูลดิบ ไม่ใช่คำแนะนำการลงทุน)")
+    return "\n".join(lines)
 
 
 def _ai_chat_reply(text: str, telegram_user_id: str | None, db: Session | None) -> TelegramReply:
@@ -956,7 +981,7 @@ def _format_compare_reply(args: str) -> TelegramReply:
 BOT_COMMANDS: list[dict[str, str]] = [
     {"command": "menu", "description": "เมนูคีย์ลัดแบบปุ่มกด"},
     {"command": "analyze", "description": "วิเคราะห์หุ้นด้วย AI (จำกัดต่อวัน)"},
-    {"command": "graph", "description": "กราฟราคา + แนวโน้ม (เช่น /graph AAPL 1m, รองรับจีน/ฮ่องกง)"},
+    {"command": "graph", "description": "กราฟแท่งเทียน + MA + แนวรับแนวต้าน (เช่น /graph AAPL 5y)"},
     {"command": "chart", "description": "กราฟราคาย้อนหลัง 7 วัน"},
     {"command": "alert", "description": "แจ้งเตือนราคา เช่น /alert AAPL 250"},
     {"command": "me", "description": "ดูแพ็กเกจ + สิทธิ์คงเหลือวันนี้"},
@@ -999,7 +1024,7 @@ def _format_help() -> str:
         "/checkaddress <wallet> - identify crypto wallet and open explorers",
         "/report - full daily monitor",
         "/analyze SYMBOL - run AI analysis (daily quota per user)",
-        "/graph SYMBOL [tf] - price chart with trend (e.g. /graph ORCL 1m, /graph 0700.HK). Compare: /graph AAPL vs MSFT",
+        "/graph SYMBOL [tf] - candlestick + MA + support/resistance (tf: 1w/1m/3m/6m/1y/2y/3y/4y/5y, e.g. /graph AAPL 5y). Compare: /graph AAPL vs MSFT",
         "/chart SYMBOL - 7-day price chart",
         "/portfolio chart - your holdings as a pie chart with total P&L",
         "/alert SYMBOL PRICE - alert when price is reached (e.g. /alert AAPL 250). /alert list, /alert remove SYMBOL",
@@ -1224,7 +1249,7 @@ def build_telegram_reply(
             is_compare = len(multi) >= 2
             symbol = None if is_compare else (_extract_symbol(args) or _extract_symbol(text))
             if not is_compare and not symbol:
-                return TelegramReply(text="ส่ง symbol เช่น /graph AAPL, /graph 0700.HK หรือ /graph 600519.SS\nเปรียบเทียบ: /graph AAPL vs MSFT · ช่วงเวลา: /graph AAPL 1m")
+                return TelegramReply(text="ส่ง symbol เช่น /graph AAPL, /graph 0700.HK หรือ /graph 600519.SS\nเปรียบเทียบ: /graph AAPL vs MSFT · ช่วงเวลา: /graph AAPL 5y (1w–5y)")
             # โควตา: เช็คก่อนเรนเดอร์ (กันเรนเดอร์ทิ้งเมื่อเกินสิทธิ์)
             if telegram_user_id and db:
                 from services.usage import peek_quota
@@ -1233,12 +1258,12 @@ def build_telegram_reply(
                 if not pq.allowed:
                     return _quota_reached_reply("ตีกราฟ", pq.used, pq.limit)
 
+            tf = _parse_graph_timeframe(source, default="1y")
             if is_compare:
-                days = _parse_graph_days(source, default=30)   # เปรียบเทียบ default 30 วัน
                 from services.telegram_chart import generate_compare_chart
-                photo, meta = generate_compare_chart(multi, days=days)
+                photo, meta = generate_compare_chart(multi, timeframe=tf)
                 ranked = sorted(meta["changes"].items(), key=lambda kv: kv[1], reverse=True)
-                lines = [f"⚖️ เปรียบเทียบ {days} วัน (% เปลี่ยนแปลง)"]
+                lines = [f"⚖️ เปรียบเทียบ {meta.get('tf_label', tf)} (% เปลี่ยนแปลง)"]
                 for i, (sym, pct) in enumerate(ranked):
                     medal = "🥇" if i == 0 else ("🥈" if i == 1 else "•")
                     sign = "+" if pct >= 0 else ""
@@ -1246,9 +1271,8 @@ def build_telegram_reply(
                 caption = "\n".join(lines)
                 keyboard = [[{"text": f"📊 วิเคราะห์ {multi[0]}", "callback_data": f"analyze:{multi[0]}"}]]
             else:
-                days = _parse_graph_days(source)
                 from services.telegram_chart import generate_price_chart
-                photo, meta = generate_price_chart(symbol, days=days)
+                photo, meta = generate_price_chart(symbol, timeframe=tf)
                 caption = _chart_caption(meta)
                 keyboard = [[
                     {"text": "📊 วิเคราะห์ AI",  "callback_data": f"analyze:{symbol}"},
