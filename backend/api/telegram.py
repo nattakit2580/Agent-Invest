@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from sqlalchemy import desc
+from pydantic import BaseModel
+from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
 
 from api.admin import require_admin as require_admin_password
@@ -334,6 +335,97 @@ def ai_chat_stats(days: int = Query(30, ge=1, le=365), db: Session = Depends(get
         "top_symbols": top_symbols,
         "recent_low_rated": low,   # ใช้ปรับปรุง prompt/logic
     }
+
+
+class SetTierBody(BaseModel):
+    tier: str
+
+
+@router.get("/users", dependencies=[Depends(require_admin_password)])
+def list_users(
+    limit: int = Query(50, ge=1, le=200),
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Users with their tier + today's usage — for the web admin to manage quotas."""
+    from models.prediction import TelegramUser
+    from models.usage import UserDailyUsage
+    from services.tiers import get_user_tier, quota_for, TIERS
+    from services.usage import _local_today
+
+    q = db.query(TelegramUser).filter(TelegramUser.is_bot.isnot(True))
+    if search:
+        like = f"%{search.strip()}%"
+        q = q.filter(or_(
+            TelegramUser.username.ilike(like),
+            TelegramUser.first_name.ilike(like),
+            TelegramUser.telegram_user_id.ilike(like),
+        ))
+    users = q.order_by(TelegramUser.last_seen_at.desc()).limit(limit).all()
+
+    today = _local_today()
+    ids = [u.telegram_user_id for u in users]
+    usage: dict[str, dict[str, int]] = {}
+    if ids:
+        for r in db.query(UserDailyUsage).filter(
+            UserDailyUsage.usage_date == today,
+            UserDailyUsage.telegram_user_id.in_(ids),
+        ).all():
+            usage.setdefault(r.telegram_user_id, {})[r.feature] = r.count
+
+    out = []
+    for u in users:
+        uid = u.telegram_user_id
+        used = usage.get(uid, {})
+        feats = {}
+        for f in ("analyze", "graph", "chat"):
+            lim = quota_for(db, uid, f)
+            feats[f] = {"used": used.get(f, 0), "limit": lim}  # limit 0 = ไม่จำกัด
+        out.append({
+            "telegram_user_id": uid,
+            "name": (f"@{u.username}" if u.username else (u.first_name or "")) or uid,
+            "username": u.username,
+            "tier": get_user_tier(db, uid),
+            "usage": feats,
+            "message_count": u.message_count or 0,
+            "last_seen": u.last_seen_at,
+        })
+    return {"users": out, "count": len(out), "tiers": list(TIERS)}
+
+
+@router.post("/users/{telegram_user_id}/tier", dependencies=[Depends(require_admin_password)])
+def set_user_tier_endpoint(telegram_user_id: str, body: SetTierBody, db: Session = Depends(get_db)):
+    """Set a user's membership tier (free/pro/vip)."""
+    from services.tiers import set_user_tier
+    try:
+        tier = set_user_tier(db, telegram_user_id, body.tier)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "telegram_user_id": telegram_user_id, "tier": tier}
+
+
+@router.post("/users/{telegram_user_id}/reset-usage", dependencies=[Depends(require_admin_password)])
+def reset_user_usage(
+    telegram_user_id: str,
+    feature: Optional[str] = Query(None, description="analyze|graph|chat; omit = ทั้งหมด"),
+    db: Session = Depends(get_db),
+):
+    """Reset today's usage for a user (grant them fresh quota for today)."""
+    from models.usage import UserDailyUsage
+    from services.usage import _local_today
+
+    q = db.query(UserDailyUsage).filter(
+        UserDailyUsage.telegram_user_id == telegram_user_id,
+        UserDailyUsage.usage_date == _local_today(),
+    )
+    if feature:
+        q = q.filter(UserDailyUsage.feature == feature)
+    n = 0
+    for row in q.all():
+        row.count = 0
+        n += 1
+    db.commit()
+    return {"ok": True, "reset_rows": n}
 
 
 @router.post("/commands/register", dependencies=[Depends(_require_admin)])
