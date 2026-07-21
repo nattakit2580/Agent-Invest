@@ -74,3 +74,6 @@ def init_db():
             conn.execute(text(
                 "ALTER TABLE telegram_messages ALTER COLUMN reply_status TYPE VARCHAR(200)"
             ))
+            conn.execute(text(
+                "ALTER TABLE telegram_users ADD COLUMN IF NOT EXISTS last_context_symbol VARCHAR(20)"
+            ))

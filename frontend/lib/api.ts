@@ -212,6 +212,27 @@ export const getTelegramAnalytics = (password: string, params?: Record<string, s
     })
     .then((r) => r.data);
 
+export interface AiChatStats {
+  days: number;
+  total_chats: number;
+  rated: number;
+  thumbs_up: number;
+  thumbs_down: number;
+  satisfaction_pct: number | null;
+  with_symbol_context: number;
+  top_symbols: { symbol: string; count: number }[];
+  recent_low_rated: { question: string; answer: string; symbol: string | null; created_at: string }[];
+}
+
+// AI-chat feedback statistics (admin password) — used to improve chat logic.
+export const getAiChatStats = (password: string, days = 30) =>
+  api
+    .get<AiChatStats>("/telegram/ai-stats", {
+      params: { days },
+      headers: { "X-Admin-Password": password },
+    })
+    .then((r) => r.data);
+
 export const getEconomicIndicators = () =>
   api.get<EconomicResponse>("/economic/indicators").then((r) => r.data);
 

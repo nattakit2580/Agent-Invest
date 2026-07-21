@@ -304,6 +304,8 @@ def ai_chat_stats(days: int = Query(30, ge=1, le=365), db: Session = Depends(get
     from datetime import timedelta
     from models.chat_feedback import AiChatInteraction
 
+    from collections import Counter
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     rows = db.query(AiChatInteraction).filter(AiChatInteraction.created_at >= cutoff).all()
     total = len(rows)
@@ -311,6 +313,10 @@ def ai_chat_stats(days: int = Query(30, ge=1, le=365), db: Session = Depends(get
     down = sum(1 for r in rows if r.rating == -1)
     rated = up + down
     with_symbol = sum(1 for r in rows if r.symbol)
+
+    sym_counter: Counter[str] = Counter(r.symbol for r in rows if r.symbol)
+    top_symbols = [{"symbol": s, "count": c} for s, c in sym_counter.most_common(10)]
+
     low = [
         {"question": r.question[:200], "answer": r.answer[:200], "symbol": r.symbol,
          "created_at": r.created_at}
@@ -325,6 +331,7 @@ def ai_chat_stats(days: int = Query(30, ge=1, le=365), db: Session = Depends(get
         "thumbs_down": down,
         "satisfaction_pct": round(up / rated * 100, 1) if rated else None,
         "with_symbol_context": with_symbol,
+        "top_symbols": top_symbols,
         "recent_low_rated": low,   # ใช้ปรับปรุง prompt/logic
     }
 

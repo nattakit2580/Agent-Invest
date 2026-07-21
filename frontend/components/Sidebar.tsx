@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   FlaskConical,
   Database,
+  MessagesSquare,
   Menu,
   X,
 } from "lucide-react";
@@ -22,6 +23,7 @@ import {
 const navItems = [
   { href: "/", label: "Dashboard", icon: Home },
   { href: "/telegram", label: "Telegram Bot", icon: MessageCircle },
+  { href: "/ai-chat", label: "AI Chat Feedback", icon: MessagesSquare },
   { href: "/analyze", label: "วิเคราะห์หุ้น", icon: Brain },
   { href: "/deep-research", label: "Deep Research", icon: FlaskConical },
   { href: "/predictions", label: "ประวัติการคาดการณ์", icon: Target },

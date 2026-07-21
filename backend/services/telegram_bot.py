@@ -395,6 +395,56 @@ AI_CHAT_SYSTEM_PROMPT = """คุณคือ Agent Invest ผู้ช่วย
 - ห้ามแต่งตัวเลขราคา/ข้อมูลที่ไม่มีใน context เด็ดขาด"""
 
 
+# ── Few-shot ที่เรียนรู้จาก feedback: ดึงคำตอบที่ผู้ใช้กด 👍 มาเป็นตัวอย่างน้ำเสียง/รูปแบบ
+# แคชไว้ (TTL) เพื่อไม่ต้อง query DB ทุกครั้งที่แชท ระบบยิ่งใช้ยิ่งปรับตัวตามที่ผู้ใช้ชอบ
+_FEWSHOT_CACHE: dict[str, Any] = {"text": "", "ts": 0.0}
+_FEWSHOT_TTL_SEC = 900        # รีเฟรชทุก 15 นาที
+_FEWSHOT_MAX = 3              # จำนวนตัวอย่างสูงสุด
+
+
+def _chat_system_prompt(db: Session | None) -> str:
+    """ระบบ prompt พื้นฐาน + few-shot จากคำตอบที่ได้ 👍 บ่อย (auto-improve)."""
+    if db is None:
+        return AI_CHAT_SYSTEM_PROMPT
+    import time
+    now_ts = time.monotonic()
+    if now_ts - _FEWSHOT_CACHE["ts"] > _FEWSHOT_TTL_SEC:
+        _FEWSHOT_CACHE["text"] = _build_few_shot(db)
+        _FEWSHOT_CACHE["ts"] = now_ts
+    block = _FEWSHOT_CACHE["text"]
+    return AI_CHAT_SYSTEM_PROMPT + block
+
+
+def _build_few_shot(db: Session) -> str:
+    try:
+        from models.chat_feedback import AiChatInteraction
+        rows = (
+            db.query(AiChatInteraction)
+            .filter(AiChatInteraction.rating == 1)
+            .order_by(AiChatInteraction.rated_at.desc())
+            .limit(_FEWSHOT_MAX * 3)
+            .all()
+        )
+    except Exception:
+        return ""
+    seen: set[str] = set()
+    examples: list[str] = []
+    for r in rows:
+        q = (r.question or "").strip().replace("\n", " ")[:120]
+        a = (r.answer or "").strip().replace("\n", " ")[:240]
+        key = q.lower()
+        if not q or not a or key in seen:
+            continue
+        seen.add(key)
+        examples.append(f"ผู้ใช้: {q}\nตอบที่ดี: {a}")
+        if len(examples) >= _FEWSHOT_MAX:
+            break
+    if not examples:
+        return ""
+    return ("\n\nตัวอย่างคำตอบที่ผู้ใช้พอใจ (ใช้เป็นแนวทางน้ำเสียง ความยาว และรูปแบบ "
+            "ไม่ต้องลอกเนื้อหา):\n" + "\n---\n".join(examples))
+
+
 def _is_bare_symbol(text: str) -> bool:
     """True เมื่อข้อความเป็นแค่ ticker เดี่ยวๆ ที่ตั้งใจพิมพ์เป็น ticker — ตอบ snapshot เร็ว
     เงื่อนไข: พิมพ์ตัวใหญ่ทั้งหมด ("NVDA") หรือเป็น alias คริปโตที่คนพิมพ์เล็กจนชิน ("btc")
@@ -409,7 +459,7 @@ def _is_bare_symbol(text: str) -> bool:
 def _ai_chat_context(telegram_user_id: str | None, db: Session | None, text: str = "") -> str:
     """รวบรวม context ส่วนตัว (portfolio + watchlist + ราคาหุ้นที่ถามถึง + ข้อความล่าสุด) ให้ LLM."""
     parts: list[str] = []
-    symbol = (_extract_symbol(text) if text else None) or _LAST_CONTEXT.get(telegram_user_id or "")
+    symbol = (_extract_symbol(text) if text else None) or _get_context_symbol(telegram_user_id, db)
     if symbol:
         try:
             data = fetch_market_data(symbol)
@@ -702,14 +752,51 @@ def _chart_caption(meta: dict) -> str:
     return "\n".join(lines)
 
 
-# บริบทหัวข้อสนทนาล่าสุดต่อ user (in-memory) — ให้คำถามต่อเนื่องอย่าง "ทำไมถึงขึ้น"
-# รู้ว่าหมายถึงหุ้นตัวไหน โดยไม่ต้องพิมพ์ ticker ซ้ำ
+# บริบทหัวข้อสนทนาล่าสุดต่อ user — ให้คำถามต่อเนื่องอย่าง "ทำไมถึงขึ้น" รู้ว่าหมายถึง
+# หุ้นตัวไหนโดยไม่ต้องพิมพ์ ticker ซ้ำ เก็บทั้งใน memory (เร็ว) และ DB (จำข้าม restart)
 _LAST_CONTEXT: dict[str, str] = {}
 
 
-def _set_context_symbol(telegram_user_id: str | None, symbol: str | None) -> None:
-    if telegram_user_id and symbol:
-        _LAST_CONTEXT[telegram_user_id] = symbol
+def _set_context_symbol(telegram_user_id: str | None, symbol: str | None,
+                        db: Session | None = None) -> None:
+    if not telegram_user_id or not symbol:
+        return
+    _LAST_CONTEXT[telegram_user_id] = symbol
+    if db is not None:
+        try:
+            user = db.query(TelegramUser).filter(
+                TelegramUser.telegram_user_id == telegram_user_id
+            ).first()
+            if user is None:
+                user = TelegramUser(telegram_user_id=telegram_user_id, first_seen_at=_now())
+                db.add(user)
+            user.last_context_symbol = symbol
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+
+def _get_context_symbol(telegram_user_id: str | None, db: Session | None = None) -> str | None:
+    """หัวข้อล่าสุด: จาก memory ก่อน ถ้าไม่มี (เช่นหลัง restart) ดึงจาก DB."""
+    if not telegram_user_id:
+        return None
+    cached = _LAST_CONTEXT.get(telegram_user_id)
+    if cached:
+        return cached
+    if db is not None:
+        try:
+            user = db.query(TelegramUser).filter(
+                TelegramUser.telegram_user_id == telegram_user_id
+            ).first()
+            if user and user.last_context_symbol:
+                _LAST_CONTEXT[telegram_user_id] = user.last_context_symbol
+                return user.last_context_symbol
+        except Exception:
+            pass
+    return None
 
 
 def _log_ai_interaction(db: Session | None, telegram_user_id: str | None,
@@ -745,7 +832,7 @@ def _ai_chat_reply(text: str, telegram_user_id: str | None, db: Session | None) 
     try:
         agent = BaseAgent()
         agent.name = "telegram_chat"
-        answer = (agent._call_llm(AI_CHAT_SYSTEM_PROMPT, user_prompt, max_tokens=700) or "").strip()
+        answer = (agent._call_llm(_chat_system_prompt(db), user_prompt, max_tokens=700) or "").strip()
     except Exception as exc:
         return TelegramReply(
             text=f"ตอนนี้ AI ตอบไม่ได้ชั่วคราว ({str(exc)[:120]})\nลองใช้เมนูคำสั่งแทน: /menu"
@@ -754,8 +841,9 @@ def _ai_chat_reply(text: str, telegram_user_id: str | None, db: Session | None) 
         return TelegramReply(text="AI ไม่มีคำตอบสำหรับข้อความนี้ ลอง /menu ดูคำสั่งที่ใช้ได้")
 
     # context symbol: จากข้อความปัจจุบัน หรือหัวข้อล่าสุด
-    symbol = _extract_symbol(text) or _LAST_CONTEXT.get(telegram_user_id or "")
-    _set_context_symbol(telegram_user_id, _extract_symbol(text))
+    cur_sym = _extract_symbol(text)
+    symbol = cur_sym or _get_context_symbol(telegram_user_id, db)
+    _set_context_symbol(telegram_user_id, cur_sym, db)
     interaction_id = _log_ai_interaction(db, telegram_user_id, text, answer, symbol)
 
     # ปุ่มให้คะแนน (เก็บสถิติ→ปรับปรุงโลจิก) + ปุ่มถามต่อ
@@ -1284,7 +1372,7 @@ def build_telegram_reply(
                 + (result.get("reasoning") or "")[:300]
             )
             # จำหัวข้อไว้ ให้กด "คุยกับ AI ต่อ" แล้วถามต่อเนื่องได้เลย
-            _set_context_symbol(telegram_user_id, symbol)
+            _set_context_symbol(telegram_user_id, symbol, db)
             return TelegramReply(
                 text=reply_text,
                 keyboard=[
@@ -1491,6 +1579,8 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
                     row.rated_at = _now()
                     db.commit()
                     saved = True
+                    if rating == 1:
+                        _FEWSHOT_CACHE["ts"] = 0.0   # ให้ few-shot รีเฟรชทันทีเมื่อมีตัวอย่างที่ดีใหม่
             except Exception as exc:
                 print(f"[ai_chat] feedback save error: {exc}")
                 db.rollback()
@@ -1504,12 +1594,12 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
     # ── "คุยกับ AI ต่อ" — ตั้งหัวข้อแล้วชวนให้พิมพ์คำถามต่อ ──
     if action == "askai":
         if arg:
-            _set_context_symbol(telegram_user_id, _extract_symbol(arg) or arg.upper())
+            _set_context_symbol(telegram_user_id, _extract_symbol(arg) or arg.upper(), db)
         try:
             client.answer_callback_query(callback_id)
         except Exception:
             pass
-        topic = _LAST_CONTEXT.get(telegram_user_id, "")
+        topic = _get_context_symbol(telegram_user_id, db) or ""
         prompt = (f"💬 ถามต่อได้เลยครับ — พิมพ์คำถามเกี่ยวกับ {topic} หรือเรื่องอื่นก็ได้\n"
                   "เช่น \"ทำไมถึงมองว่าขึ้น\", \"ความเสี่ยงคืออะไร\", \"ควรถือหรือขาย\"") if topic else (
                   "💬 ถามอะไรก็ได้เลยครับ พิมพ์คำถามด้านล่าง\nเช่น \"ตลาดช่วงนี้เป็นยังไง\", \"NVDA ยังน่าถือไหม\"")

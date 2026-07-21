@@ -109,6 +109,8 @@ class TelegramUser(Base):
     first_seen_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_seen_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     message_count = Column(Integer, default=0)
+    # หัวข้อหุ้นที่กำลังคุยกับ AI ล่าสุด — จำข้าม restart ให้คำถามต่อเนื่องรู้บริบท
+    last_context_symbol = Column(String(20), nullable=True)
 
 
 class TelegramChat(Base):
