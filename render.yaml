@@ -25,8 +25,10 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+      # NOTE: OpenRouter retires free models often — if AI calls start returning
+      # 404, update this to a currently-available model id (see openrouter.ai/models).
       - key: OPENROUTER_MODEL
-        value: meta-llama/llama-3.3-70b-instruct:free
+        value: openai/gpt-oss-20b:free
       - key: OPENROUTER_BASE_URL
         value: https://openrouter.ai/api/v1
       - key: RAG_ENABLED
