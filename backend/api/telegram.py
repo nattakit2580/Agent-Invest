@@ -297,6 +297,38 @@ def send_broadcast(req: TelegramBroadcastRequest, db: Session = Depends(get_db))
     return row
 
 
+@router.get("/ai-stats", dependencies=[Depends(require_admin_password)])
+def ai_chat_stats(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
+    """AI-chat feedback statistics — how many chats, how they were rated, and a
+    sample of the low-rated ones so the chat logic/prompt can be improved."""
+    from datetime import timedelta
+    from models.chat_feedback import AiChatInteraction
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = db.query(AiChatInteraction).filter(AiChatInteraction.created_at >= cutoff).all()
+    total = len(rows)
+    up = sum(1 for r in rows if r.rating == 1)
+    down = sum(1 for r in rows if r.rating == -1)
+    rated = up + down
+    with_symbol = sum(1 for r in rows if r.symbol)
+    low = [
+        {"question": r.question[:200], "answer": r.answer[:200], "symbol": r.symbol,
+         "created_at": r.created_at}
+        for r in sorted(rows, key=lambda x: x.created_at, reverse=True)
+        if r.rating == -1
+    ][:15]
+    return {
+        "days": days,
+        "total_chats": total,
+        "rated": rated,
+        "thumbs_up": up,
+        "thumbs_down": down,
+        "satisfaction_pct": round(up / rated * 100, 1) if rated else None,
+        "with_symbol_context": with_symbol,
+        "recent_low_rated": low,   # ใช้ปรับปรุง prompt/logic
+    }
+
+
 @router.post("/commands/register", dependencies=[Depends(_require_admin)])
 def register_commands():
     """(Re)register the "/" command menu across the scopes that actually govern

@@ -46,6 +46,7 @@ def init_db():
     from models.usage import UserDailyUsage  # noqa
     from models.tier import UserTier  # noqa
     from models.alert import PriceAlert  # noqa
+    from models.chat_feedback import AiChatInteraction  # noqa
 
     # The embedding table has a pgvector column, so the extension must exist first.
     if engine.url.get_backend_name().startswith("postgresql"):

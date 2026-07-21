@@ -298,6 +298,9 @@ def _menu_reply(chat_type: str) -> TelegramReply:
     if chat_type == "private":
         keyboard: list[list[dict[str, Any]]] = [
             [
+                {"text": "💬 คุยกับ AI", "callback_data": "askai"},
+            ],
+            [
                 {"text": "💼 พอร์ตของฉัน", "callback_data": "port_view"},
                 {"text": "📋 Watchlist",    "callback_data": "watch_view"},
             ],
@@ -406,12 +409,12 @@ def _is_bare_symbol(text: str) -> bool:
 def _ai_chat_context(telegram_user_id: str | None, db: Session | None, text: str = "") -> str:
     """รวบรวม context ส่วนตัว (portfolio + watchlist + ราคาหุ้นที่ถามถึง + ข้อความล่าสุด) ให้ LLM."""
     parts: list[str] = []
-    symbol = _extract_symbol(text) if text else None
+    symbol = (_extract_symbol(text) if text else None) or _LAST_CONTEXT.get(telegram_user_id or "")
     if symbol:
         try:
             data = fetch_market_data(symbol)
             parts.append(
-                f"=== ราคาล่าสุด {symbol} ===\n"
+                f"=== ราคาล่าสุด {symbol} (หัวข้อที่กำลังคุย) ===\n"
                 f"ราคา {_fmt_price(data.get('price'))} | เปลี่ยนแปลง {_fmt_pct(data.get('price_change_pct'))}"
                 + (f" | RSI14 {data['rsi_14']}" if data.get("rsi_14") is not None else "")
             )
@@ -699,6 +702,40 @@ def _chart_caption(meta: dict) -> str:
     return "\n".join(lines)
 
 
+# บริบทหัวข้อสนทนาล่าสุดต่อ user (in-memory) — ให้คำถามต่อเนื่องอย่าง "ทำไมถึงขึ้น"
+# รู้ว่าหมายถึงหุ้นตัวไหน โดยไม่ต้องพิมพ์ ticker ซ้ำ
+_LAST_CONTEXT: dict[str, str] = {}
+
+
+def _set_context_symbol(telegram_user_id: str | None, symbol: str | None) -> None:
+    if telegram_user_id and symbol:
+        _LAST_CONTEXT[telegram_user_id] = symbol
+
+
+def _log_ai_interaction(db: Session | None, telegram_user_id: str | None,
+                        question: str, answer: str, symbol: str | None) -> str | None:
+    """เก็บ Q&A ของ AI chat เป็นสถิติ (ใช้ปรับปรุงโลจิก + เป็นข้อมูลฝึกภายหลัง)."""
+    if not db or not telegram_user_id:
+        return None
+    try:
+        from models.chat_feedback import AiChatInteraction
+        row = AiChatInteraction(
+            telegram_user_id=telegram_user_id,
+            symbol=symbol, question=question[:2000], answer=answer[:4000],
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return row.id
+    except Exception as exc:
+        print(f"[ai_chat] log error: {exc}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return None
+
+
 def _ai_chat_reply(text: str, telegram_user_id: str | None, db: Session | None) -> TelegramReply:
     from agents.base_agent import BaseAgent
     if _ai_chat_throttled(telegram_user_id):
@@ -715,13 +752,24 @@ def _ai_chat_reply(text: str, telegram_user_id: str | None, db: Session | None) 
         )
     if not answer:
         return TelegramReply(text="AI ไม่มีคำตอบสำหรับข้อความนี้ ลอง /menu ดูคำสั่งที่ใช้ได้")
-    return TelegramReply(
-        text=answer[:3900],
-        keyboard=[[
-            {"text": "💼 พอร์ต",  "callback_data": "port_view"},
-            {"text": "⚡ เมนู",   "callback_data": "menu"},
-        ]],
-    )
+
+    # context symbol: จากข้อความปัจจุบัน หรือหัวข้อล่าสุด
+    symbol = _extract_symbol(text) or _LAST_CONTEXT.get(telegram_user_id or "")
+    _set_context_symbol(telegram_user_id, _extract_symbol(text))
+    interaction_id = _log_ai_interaction(db, telegram_user_id, text, answer, symbol)
+
+    # ปุ่มให้คะแนน (เก็บสถิติ→ปรับปรุงโลจิก) + ปุ่มถามต่อ
+    keyboard: list[list[dict[str, Any]]] = []
+    if interaction_id:
+        keyboard.append([
+            {"text": "👍 ตรงใจ", "callback_data": f"chatfb:{interaction_id}:up"},
+            {"text": "👎 ยังไม่ใช่", "callback_data": f"chatfb:{interaction_id}:down"},
+        ])
+    keyboard.append([
+        {"text": "💬 ถามต่อ", "callback_data": "askai"},
+        {"text": "⚡ เมนู", "callback_data": "menu"},
+    ])
+    return TelegramReply(text=answer[:3900], keyboard=keyboard)
 
 
 # ---------------------------------------------------------------------------
@@ -1235,12 +1283,17 @@ def build_telegram_reply(
                 f"ราคา: ${market_data.get('price', 0):,.2f}\n\n"
                 + (result.get("reasoning") or "")[:300]
             )
+            # จำหัวข้อไว้ ให้กด "คุยกับ AI ต่อ" แล้วถามต่อเนื่องได้เลย
+            _set_context_symbol(telegram_user_id, symbol)
             return TelegramReply(
                 text=reply_text,
-                keyboard=[[
-                    {"text": "📈 Chart 7d",   "callback_data": f"chart:{symbol}"},
-                    {"text": "💼 Portfolio",  "callback_data": "port_view"},
-                ]],
+                keyboard=[
+                    [{"text": f"💬 คุยกับ AI ต่อเรื่อง {symbol}", "callback_data": f"askai:{symbol}"}],
+                    [
+                        {"text": "📈 Chart 7d",   "callback_data": f"chart:{symbol}"},
+                        {"text": "💼 Portfolio",  "callback_data": "port_view"},
+                    ],
+                ],
             )
 
         if intent == "chart_symbol":
@@ -1420,6 +1473,52 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
     action = parts[0]
     arg = parts[1] if len(parts) > 1 else ""
 
+    client = TelegramClient(channel_id=chat_id)
+
+    # ── AI-chat feedback (👍/👎) — เก็บสถิติเพื่อปรับปรุงโลจิก ──
+    if action == "chatfb":
+        fb_parts = arg.split(":")
+        inter_id = fb_parts[0] if fb_parts else ""
+        vote = fb_parts[1] if len(fb_parts) > 1 else ""
+        rating = 1 if vote == "up" else (-1 if vote == "down" else None)
+        saved = False
+        if inter_id and rating is not None:
+            try:
+                from models.chat_feedback import AiChatInteraction
+                row = db.query(AiChatInteraction).filter(AiChatInteraction.id == inter_id).first()
+                if row:
+                    row.rating = rating
+                    row.rated_at = _now()
+                    db.commit()
+                    saved = True
+            except Exception as exc:
+                print(f"[ai_chat] feedback save error: {exc}")
+                db.rollback()
+        ack = "ขอบคุณสำหรับ feedback 🙏 เราจะเอาไปปรับปรุงให้ดีขึ้น" if saved else "บันทึกแล้ว"
+        try:
+            client.answer_callback_query(callback_id, text=ack)
+        except Exception:
+            pass
+        return {"ok": True, "handled": True, "action": "chatfb", "rating": rating, "saved": saved}
+
+    # ── "คุยกับ AI ต่อ" — ตั้งหัวข้อแล้วชวนให้พิมพ์คำถามต่อ ──
+    if action == "askai":
+        if arg:
+            _set_context_symbol(telegram_user_id, _extract_symbol(arg) or arg.upper())
+        try:
+            client.answer_callback_query(callback_id)
+        except Exception:
+            pass
+        topic = _LAST_CONTEXT.get(telegram_user_id, "")
+        prompt = (f"💬 ถามต่อได้เลยครับ — พิมพ์คำถามเกี่ยวกับ {topic} หรือเรื่องอื่นก็ได้\n"
+                  "เช่น \"ทำไมถึงมองว่าขึ้น\", \"ความเสี่ยงคืออะไร\", \"ควรถือหรือขาย\"") if topic else (
+                  "💬 ถามอะไรก็ได้เลยครับ พิมพ์คำถามด้านล่าง\nเช่น \"ตลาดช่วงนี้เป็นยังไง\", \"NVDA ยังน่าถือไหม\"")
+        try:
+            client.send_message(prompt, chat_id=chat_id)
+        except Exception:
+            pass
+        return {"ok": True, "handled": True, "action": "askai", "topic": topic}
+
     # Map callback actions to synthetic intent_info
     action_intent_map = {
         "analyze":    "analyze_symbol",
@@ -1453,7 +1552,6 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
 
     intent_info = {"intent": intent, "command": action, "args": args_str, "keywords": []}
 
-    client = TelegramClient(channel_id=chat_id)
     chat_type = str(chat.get("type") or "unknown")
 
     # ปุ่มที่กดในกลุ่มต้องเป็น intent ฝั่งรายงานเท่านั้น (กันปุ่มเก่า/ปุ่มส่งต่อ)
