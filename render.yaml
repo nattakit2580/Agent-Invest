@@ -43,8 +43,6 @@ services:
         value: https://agent-invest-frontend.onrender.com
       - key: CORS_ALLOW_ORIGINS
         value: https://agent-invest-frontend.onrender.com
-      - key: CORS_ALLOW_ORIGIN_REGEX
-        value: https://.*\.(workers|pages)\.dev|https://.*\.onrender\.com
       - key: NEWS_API_KEY
         sync: false
       - key: FRED_API_KEY

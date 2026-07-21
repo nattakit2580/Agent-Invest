@@ -1,8 +1,20 @@
 # Agent Invest
 
-Agent Invest is a private full-stack investment monitoring system. It includes a FastAPI backend, a Next.js dashboard, AI-assisted investment analysis, prediction tracking, report exports, and a Telegram bot for channels, private chats, and communities.
+Agent Invest is a single-tenant full-stack investment monitoring system. It includes a FastAPI backend, a Next.js dashboard, AI-assisted investment analysis, prediction tracking, report exports, and a Telegram bot for channels, private chats, and communities.
 
 This README is intentionally ASCII-safe so it renders correctly in GitHub, Windows terminals, and editors that may not auto-detect UTF-8.
+
+Maintainers and coding agents should read `AGENTS.md` for repository rules and
+`HANDOFF.md` for the latest verified status, completed work, and follow-ups.
+
+## New User? Start Here
+
+Windows users who have never used Git or run a Python/Node.js project should
+follow the step-by-step [Thai beginner quick start](QUICKSTART_TH.md). The
+shortest path is **Code -> Download ZIP -> Extract -> double-click `run.bat`**.
+
+Repository owners preparing access, visibility, licensing, and a first release
+should use the [GitHub sharing checklist](docs/GITHUB_SHARING_TH.md).
 
 ## What The System Does
 
@@ -31,7 +43,7 @@ Stack:
 - APScheduler
 - yfinance
 - feedparser
-- OpenRouter integration with DeepSeek as the default model
+- OpenRouter integration with Llama 3.3 70B (free route) as the default model
 
 Local API docs:
 
@@ -45,7 +57,7 @@ Frontend source lives in `frontend/`.
 
 Stack:
 
-- Next.js 14
+- Next.js 15
 - React 18
 - TypeScript
 - Tailwind CSS
@@ -110,6 +122,7 @@ Full Telegram setup details are in `docs/telegram-bot.md`.
 |   |-- services/            # Telegram and monitor report services
 |   |-- tasks/               # Scheduler jobs
 |   |-- utils/
+|   |-- tests/               # Offline application smoke tests
 |   |-- main.py              # FastAPI entrypoint
 |   `-- requirements.txt
 |-- frontend/
@@ -121,15 +134,39 @@ Full Telegram setup details are in `docs/telegram-bot.md`.
 |   |-- ipo_watchlist.json
 |   `-- ipo_watchlist.example.json
 |-- docs/
+|   |-- GITHUB_SHARING_TH.md # Owner sharing/release checklist (Thai)
+|   |-- PUBLIC_SECURITY_AUDIT.md # Redacted public-history audit
 |   `-- telegram-bot.md
+|-- .github/                 # CI and dependency updates
+|-- AGENTS.md                # Instructions for coding agents
+|-- HANDOFF.md               # Verified status and remaining work
+|-- QUICKSTART_TH.md         # Beginner Windows guide (Thai)
 |-- docker-compose.yml
+|-- make_local_env.py        # Safe local SQLite config generator
+|-- run.bat                  # One-click Windows setup and start
 |-- setup.ps1
 `-- start.ps1
 ```
 
 ## Local Setup
 
-### Option A: PowerShell scripts
+Requirements:
+
+- Git (recommended for developers; not required when using Download ZIP)
+- Python 3.11 or newer
+- Node.js 20 LTS and npm
+
+On Windows, clone the repository into a normal local development folder rather
+than a OneDrive-synced folder. Cloud placeholder/reparse-point handling can
+interfere with dependency folders such as `node_modules` and `.venv`.
+
+### Option A: One-click Windows start
+
+Clone the repository, then double-click `run.bat`. It creates an isolated Python
+environment, installs exact frontend dependencies, generates a local SQLite
+configuration when needed, starts both services, and opens the dashboard.
+
+To keep setup and start as separate steps, use PowerShell:
 
 Install dependencies:
 
@@ -156,19 +193,23 @@ API Docs: http://localhost:8000/docs
 Backend:
 
 ```powershell
+python -m venv backend/.venv
+backend/.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
+backend/.venv/Scripts/python.exe make_local_env.py
 cd backend
-pip install -r requirements.txt
-copy .env.example .env
-uvicorn main:app --reload --port 8000
+.venv/Scripts/python.exe -m uvicorn main:app --reload --port 8000
 ```
 
 Frontend:
 
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
+
+On macOS/Linux, use an activated Python virtual environment and replace the
+Windows executable paths above with `.venv/bin/python`.
 
 ## Environment Variables
 
@@ -261,11 +302,14 @@ GET  /accuracy
 
 ## Docker Compose
 
-Set values in a root `.env` file, then run:
+Copy the root template, replace secrets, then run:
 
 ```powershell
+Copy-Item .env.example .env
 docker compose up --build
 ```
+
+On macOS/Linux, use `cp .env.example .env` for the first command.
 
 Services:
 
@@ -276,16 +320,18 @@ Frontend: http://localhost:3000
 
 ## Validation Commands
 
-Backend syntax check:
+Backend checks (run from `backend/` with the virtual environment active):
 
 ```powershell
-python -m compileall backend
+python -m compileall -q .
+python -m unittest discover -s tests -v
 ```
 
-Frontend production build:
+Frontend security and production build checks:
 
 ```powershell
 cd frontend
+npm run audit:prod
 npm run build
 ```
 
@@ -296,26 +342,36 @@ git diff --check
 git status -sb
 ```
 
+The same checks run automatically in GitHub Actions on every push and pull
+request. Dependabot checks Python, npm, and GitHub Actions dependencies weekly.
+
 ## Security Notes
 
-- This GitHub repository is private.
 - `.env`, logs, local databases, `node_modules`, `.next`, and runtime tunnel files are ignored.
+- Backend and frontend Docker contexts exclude `.env` and local build/runtime artifacts.
 - Never commit real API keys, Telegram bot tokens, or admin tokens.
 - Use `TELEGRAM_WEBHOOK_SECRET_TOKEN` to reject fake webhook requests.
 - Use `TELEGRAM_ADMIN_TOKEN` for admin-only Telegram endpoints.
+- Set exact trusted domains in `CORS_ALLOW_ORIGINS`; keep regex-based CORS blank unless required.
+- See `SECURITY.md` for reporting and deployment requirements.
+- See `docs/PUBLIC_SECURITY_AUDIT.md` for the redacted audit performed when the repository became public.
 
 ## Collaboration
 
-To invite a friend to this private repository:
+For unrestricted read/clone access, make the repository public only after
+reviewing its full history for secrets and choosing a license. To keep it
+private, invite each trusted user from repository Settings -> Collaborators.
+Users must accept the invitation before cloning.
 
-```text
-GitHub repository -> Settings -> Collaborators -> Add people
-```
+The step-by-step owner checklist is in `docs/GITHUB_SHARING_TH.md`.
 
-Recommended permission for normal development is `Write`.
+Development and pull-request guidance is in `CONTRIBUTING.md`.
+Repository-specific agent instructions are in `AGENTS.md`; the current project
+status and verification record are in `HANDOFF.md`.
 
 ## Current Limitations
 
+- The web dashboard is single-tenant and does not include end-user accounts, tenant isolation, or public-SaaS rate limiting. Put it behind trusted access controls before exposing it to untrusted users.
 - Wallet checking currently identifies address type and returns explorer links. Balance and risk scoring need chain explorer API integration.
 - Free vs paid content is split by sending different reports to different Telegram targets. It does not yet verify paid membership inside one shared group.
 - News and IPO quality depends on configured RSS sources and manual `data/ipo_watchlist.json` entries.

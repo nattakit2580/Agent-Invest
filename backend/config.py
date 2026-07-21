@@ -4,7 +4,9 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     openrouter_api_key: str = ""
-    openrouter_model: str = "meta-llama/llama-3.3-70b-instruct:free"
+    # OpenRouter retires free models often — if AI calls start returning 404,
+    # update this to a currently-available model id (see openrouter.ai/models).
+    openrouter_model: str = "openai/gpt-oss-20b:free"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     database_url: str = "postgresql://agent:secret@localhost:5432/agent_invest"
     news_api_key: str = ""
@@ -13,8 +15,9 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
     # Extra allowed CORS origins (comma-separated), e.g. your Cloudflare Workers URL.
     cors_allow_origins: str = ""
-    # Regex allowing Cloudflare-hosted frontends (workers.dev / pages.dev) out of the box.
-    cors_allow_origin_regex: str = r"https://.*\.(workers|pages)\.dev"
+    # Optional regex for dynamic preview domains. Keep blank in production and
+    # prefer an explicit CORS_ALLOW_ORIGINS allow-list whenever possible.
+    cors_allow_origin_regex: str = ""
     fetch_interval_minutes: int = 30
     telegram_bot_token: str = ""
     telegram_channel_id: str = ""

@@ -39,6 +39,10 @@ TELEGRAM_ADMIN_TOKEN=
 
 For the MVP website, only `OPENROUTER_API_KEY` is required for `/analyze`.
 
+This dashboard is single-tenant. Before exposing it to untrusted users, add an
+identity-aware access layer and rate limits; repository privacy does not protect
+a public deployment URL.
+
 ## 2. Deploy From Blueprint
 
 1. Push this repo to GitHub.

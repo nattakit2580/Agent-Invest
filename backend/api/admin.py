@@ -1,8 +1,8 @@
 """Admin API — password-guarded per-agent model configuration.
 
-The password is verified server-side (Settings.admin_password, default
-"NiceAgent"). The frontend sends it in the ``X-Admin-Password`` header on every
-admin request; there is no session/token to keep this simple.
+The password is verified server-side (Settings.admin_password, with no default).
+The frontend sends it in the ``X-Admin-Password`` header on every admin request;
+there is no session/token to keep this simple.
 """
 from __future__ import annotations
 
