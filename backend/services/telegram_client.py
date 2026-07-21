@@ -223,6 +223,28 @@ class TelegramClient:
             results.append(self._request("sendMessage", payload).get("result", {}))
         return results
 
+    def edit_message_text(
+        self,
+        text: str,
+        chat_id: str,
+        message_id: int | str,
+        *,
+        keyboard: list[list[dict[str, Any]]] | None = None,
+        parse_mode: str | None = None,
+    ) -> dict[str, Any]:
+        """Edit an existing message (used for live progress updates)."""
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text[:3900],
+            "disable_web_page_preview": True,
+        }
+        if keyboard:
+            payload["reply_markup"] = {"inline_keyboard": keyboard}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        return self._request("editMessageText", payload).get("result", {})
+
     @classmethod
     def all_configured_bots(cls) -> list["TelegramClient"]:
         """Return list of all configured bots (bot1 + bot2 if set)."""
