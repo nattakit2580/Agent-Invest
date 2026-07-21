@@ -233,6 +233,40 @@ export const getAiChatStats = (password: string, days = 30) =>
     })
     .then((r) => r.data);
 
+export interface TgUser {
+  telegram_user_id: string;
+  name: string;
+  username: string | null;
+  tier: string;
+  usage: Record<"analyze" | "graph" | "chat", { used: number; limit: number }>;
+  message_count: number;
+  last_seen: string | null;
+}
+export interface TgUsersResponse {
+  users: TgUser[];
+  count: number;
+  tiers: string[];
+}
+
+// Admin user management (admin password)
+export const getTgUsers = (password: string, params?: { search?: string; limit?: number }) =>
+  api
+    .get<TgUsersResponse>("/telegram/users", { params, headers: { "X-Admin-Password": password } })
+    .then((r) => r.data);
+
+export const setTgUserTier = (password: string, userId: string, tier: string) =>
+  api
+    .post(`/telegram/users/${userId}/tier`, { tier }, { headers: { "X-Admin-Password": password } })
+    .then((r) => r.data);
+
+export const resetTgUserUsage = (password: string, userId: string, feature?: string) =>
+  api
+    .post(`/telegram/users/${userId}/reset-usage`, null, {
+      params: feature ? { feature } : undefined,
+      headers: { "X-Admin-Password": password },
+    })
+    .then((r) => r.data);
+
 export const getEconomicIndicators = () =>
   api.get<EconomicResponse>("/economic/indicators").then((r) => r.data);
 
