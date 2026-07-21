@@ -39,9 +39,20 @@ is "no credentials were found, but non-secret metadata is public."
 - Releases audited: 0.
 
 Remote state changed during the audit: `main` moved from `0e48f01` to
-`962a0ee`. Always re-query the remote before acting. The local dirty readiness
-work is still based on `0e48f01`; integrate the new remote commit carefully and
-do not overwrite the existing worktree.
+`962a0ee`, then further while this document was in progress. See `HANDOFF.md`
+for the up-to-date published-commit statement; do not treat the `962a0ee`
+value above as current. Always re-query the remote before acting.
+
+### 2026-07-22 follow-up
+
+The readiness pass, the `962a0ee`/`d264ea7` remote commits, and the
+`feat/telegram-ai-chat-feedback` branch were integrated and published as
+`e38c6e0` (see `HANDOFF.md` for the full commit list). GitHub Secret
+Scanning, Push Protection, and Dependabot Security Updates were enabled via
+the API. GitHub Actions CI is registered and green on `main`. This did not
+change the findings below (no credentials found; the same non-secret
+metadata is still public) - it only resolves "Required follow-up" items 1,
+6, 7, and 8.
 
 ## Audit methods
 
