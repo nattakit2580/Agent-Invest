@@ -714,6 +714,124 @@ def _format_alert_command(args: str, telegram_user_id: str | None, db: Session |
     )
 
 
+_ANALYZE_HEARTBEAT_SEC = 10   # อัปเดตความคืบหน้าทุกกี่วินาที
+
+
+def _analyze_result_text_kb(symbol: str, market_data: dict, result: dict) -> tuple[str, list]:
+    direction = result["direction"]
+    confidence = result["confidence"]
+    icon = "🟢" if direction == "bullish" else "🔴" if direction == "bearish" else "🟡"
+    text = (
+        f"{icon} {symbol} — AI วิเคราะห์\n"
+        f"ทิศทาง: {direction.upper()}  ความเชื่อมั่น: {confidence:.0%}\n"
+        f"ราคา: ${market_data.get('price', 0):,.2f}\n\n"
+        + (result.get("reasoning") or "")[:300]
+    )
+    kb = [
+        [{"text": f"💬 คุยกับ AI ต่อเรื่อง {symbol}", "callback_data": f"askai:{symbol}"}],
+        [
+            {"text": "📈 Chart 7d",   "callback_data": f"chart:{symbol}"},
+            {"text": "💼 Portfolio",  "callback_data": "port_view"},
+        ],
+    ]
+    return text, kb
+
+
+def _analyze_with_progress(symbol: str, chat_id: str, telegram_user_id: str | None) -> None:
+    """รัน /analyze แบบ background + อัปเดตสถานะทุก ~10 วิ (แก้ข้อความเดิม) เพื่อไม่ให้เงียบ."""
+    import threading
+    import time
+    from database import SessionLocal
+
+    client = TelegramClient(channel_id=chat_id)
+    db = SessionLocal()
+    msg_id: Any = None
+    state = {"stage": "กำลังเริ่ม...", "start": time.time()}
+    stop = threading.Event()
+
+    def _fmt(stage: str) -> str:
+        el = int(time.time() - state["start"])
+        return f"🔄 กำลังวิเคราะห์ {symbol} ด้วย AI… ({el} วินาที)\n⏳ {stage}"
+
+    def heartbeat():
+        # อัปเดตทุก N วิ จนกว่างานจะเสร็จ (stop ถูก set)
+        while not stop.wait(_ANALYZE_HEARTBEAT_SEC):
+            if msg_id is None:
+                continue
+            try:
+                client.edit_message_text(_fmt(state["stage"]), chat_id, msg_id)
+            except Exception:
+                pass
+
+    try:
+        res = client.send_message(_fmt(state["stage"]), chat_id=chat_id)
+        msg_id = (res[0].get("message_id") if res else None)
+        hb = threading.Thread(target=heartbeat, daemon=True)
+        hb.start()
+
+        # 1) ตรวจ symbol (ผิด → ไม่หักโควตา)
+        state["stage"] = "ดึงข้อมูลตลาด…"
+        try:
+            market_data = fetch_market_data(symbol)
+        except Exception:
+            stop.set()
+            if msg_id:
+                client.edit_message_text(f"❌ ไม่พบข้อมูลของ {symbol} — ลองตรวจสัญลักษณ์อีกครั้ง", chat_id, msg_id)
+            return
+
+        # 2) โควตา
+        if telegram_user_id:
+            from services.usage import try_consume
+            from services.tiers import quota_for
+            q = try_consume(db, telegram_user_id, "analyze", quota_for(db, telegram_user_id, "analyze"))
+            if not q.allowed:
+                stop.set()
+                if msg_id:
+                    client.edit_message_text(
+                        f"⏳ วันนี้ใช้สิทธิ์วิเคราะห์ AI ครบแล้ว ({q.used}/{q.limit})\nสิทธิ์รีเซ็ตพรุ่งนี้ครับ",
+                        chat_id, msg_id,
+                    )
+                return
+
+        # 3) ข่าว + AI
+        from agents.orchestrator import Orchestrator
+        from fetchers.news_fetcher import fetch_all_news
+        state["stage"] = "ดึงข่าวล่าสุด…"
+        news = fetch_all_news(symbol)
+        state["stage"] = "AI 4 ตัวกำลังวิเคราะห์ + ตรวจทานความเสี่ยง…"
+        result = Orchestrator().analyze(symbol, market_data, news)
+
+        stop.set()
+        _set_context_symbol(telegram_user_id, symbol, db)
+        text, kb = _analyze_result_text_kb(symbol, market_data, result)
+        if msg_id:
+            try:
+                client.edit_message_text(text, chat_id, msg_id, keyboard=kb)
+            except Exception:
+                client.send_message_with_keyboard(text, chat_id=chat_id, keyboard=kb)
+        else:
+            client.send_message_with_keyboard(text, chat_id=chat_id, keyboard=kb)
+    except Exception as exc:
+        stop.set()
+        try:
+            if msg_id:
+                client.edit_message_text(f"❌ วิเคราะห์ {symbol} ไม่สำเร็จ: {str(exc)[:150]}", chat_id, msg_id)
+            else:
+                client.send_message(f"❌ วิเคราะห์ {symbol} ไม่สำเร็จ: {str(exc)[:150]}", chat_id=chat_id)
+        except Exception:
+            pass
+    finally:
+        stop.set()
+        db.close()
+
+
+def _start_async_analyze(symbol: str, chat_id: str, telegram_user_id: str | None) -> None:
+    import threading
+    threading.Thread(
+        target=_analyze_with_progress, args=(symbol, chat_id, telegram_user_id), daemon=True
+    ).start()
+
+
 def _quota_reached_reply(feature_th: str, used: int, limit: int) -> TelegramReply:
     return TelegramReply(
         text=(
@@ -1659,6 +1777,13 @@ def _handle_callback_query(callback_query: dict[str, Any], db: Session) -> dict[
     except Exception:
         pass
 
+    # ปุ่ม "วิเคราะห์ AI" → รันแบบ background + แจ้งความคืบหน้าทุก 10 วิ (ไม่เงียบ)
+    if intent == "analyze_symbol":
+        sym = _extract_symbol(arg)
+        if sym:
+            _start_async_analyze(sym, chat_id, telegram_user_id)
+            return {"ok": True, "handled": True, "action": action, "status": "analyze_async"}
+
     reply = build_telegram_reply(intent_info, arg, db, telegram_user_id, chat_type=chat_type)
     if not reply:
         return {"ok": True, "handled": False}
@@ -1744,7 +1869,17 @@ def handle_telegram_update(update: dict[str, Any], db: Session) -> dict[str, Any
         # กลุ่ม/ซูเปอร์กรุ๊ป = report-only (คำสั่งอื่นชี้ไป DM) เพราะสมาชิกทั่วไปพิมพ์ได้
         # channel = โพสต์ได้เฉพาะแอดมิน จึงให้รันคำสั่งได้เต็มแล้วโพสต์ผลลงช่องเลย
         # (เช่น /graph AAPL โพสต์กราฟเข้าช่อง) — private ก็รันเต็มเช่นกัน
-        if chat.chat_type in {"group", "supergroup"} and intent not in GROUP_ALLOWED_INTENTS:
+        is_group = chat.chat_type in {"group", "supergroup"}
+        # /analyze (private/channel): รันแบบ background + แจ้งความคืบหน้าทุก 10 วิ
+        # (กันเงียบระหว่างประมวลผลหลายวินาที) แทนที่จะบล็อกรอในนี้
+        if (not is_group and intent == "analyze_symbol"
+                and (_extract_symbol(intent_info.get("args", "")) or _extract_symbol(text))):
+            sym = _extract_symbol(intent_info.get("args", "")) or _extract_symbol(text)
+            _start_async_analyze(sym, chat.telegram_chat_id, user.telegram_user_id if user else None)
+            row.reply_status = "analyze_async"
+            db.commit()
+            reply = None
+        elif is_group and intent not in GROUP_ALLOWED_INTENTS:
             # ในกลุ่ม: intent ที่เปิดเฉพาะส่วนตัว → ชี้ไป DM, intent ขยะ → เงียบ
             # ยกเว้น unknown: ตอบเฉพาะเมื่อ @mention บอทตรงๆ (ไม่ใช่คำสั่งหลงมาของบอทอื่น)
             bot_username = get_settings().telegram_bot_username.strip("@").lower()
