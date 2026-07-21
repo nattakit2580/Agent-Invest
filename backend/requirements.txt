@@ -4,7 +4,7 @@ uvicorn[standard]==0.30.0
 sqlalchemy==2.0.35
 psycopg2-binary==2.9.9
 pgvector==0.3.2
-yfinance==1.4.1
+yfinance==1.5.1
 feedparser==6.0.11
 requests==2.33.0
 pandas==2.2.3
