@@ -1,4 +1,6 @@
-﻿from apscheduler.schedulers.background import BackgroundScheduler
+﻿import threading
+
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -287,6 +289,14 @@ def _already_sent_today(db: Session) -> bool:
     ).first() is not None
 
 
+# กันไม่ให้ build_daily_monitor_report() (ใช้เวลาหลายสิบวินาที: ~20 symbols +
+# news + FRED + LLM brief ตามลำดับ) รันซ้อนกันสองชุดพร้อมกัน — เคยเสี่ยงเกิดขึ้น
+# ได้อยู่แล้วถ้า in-process cron ตรงเวลา 08:30 พอดีกับตอนที่ external cron/endpoint
+# ก็ยิง /telegram/monitor/run เข้ามาในช่วงเวลาเดียวกัน (ยิ่งเสี่ยงขึ้นตอนนี้ที่
+# endpoint คืนค่าทันทีแล้วรันงานต่อใน background — ผู้เรียกอาจยิงถี่ขึ้นโดยไม่รอผล)
+_monitor_send_lock = threading.Lock()
+
+
 def send_daily_telegram_monitor(force: bool = False):
     if not _telegram_reporting_enabled():
         return
@@ -294,6 +304,17 @@ def send_daily_telegram_monitor(force: bool = False):
         print("[Scheduler] telegram monitor skipped: TELEGRAM_BOT_TOKEN is not configured")
         return
 
+    if not _monitor_send_lock.acquire(blocking=False):
+        print("[Scheduler] telegram monitor skipped: another send is already in progress")
+        return
+
+    try:
+        _send_daily_telegram_monitor_locked(force=force)
+    finally:
+        _monitor_send_lock.release()
+
+
+def _send_daily_telegram_monitor_locked(force: bool = False):
     db: Session = SessionLocal()
     try:
         # dedup — กันส่งซ้ำถ้า cron และ catch-up ยิงทับกัน

@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
@@ -196,7 +196,7 @@ def send_daily_report(req: TelegramReportRequest, db: Session = Depends(get_db))
 
 
 @router.post("/monitor/run", dependencies=[Depends(_require_admin)])
-def run_daily_monitor(force: bool = False, db: Session = Depends(get_db)):
+def run_daily_monitor(force: bool = False, background_tasks: BackgroundTasks = None, db: Session = Depends(get_db)):
     """Trigger the scheduled daily monitor on demand — the reliable path for a
     Render free-tier deploy where the web service spins down and the in-process
     cron never fires at 08:30. An external scheduler (Render Cron Job) POSTs here
@@ -204,43 +204,30 @@ def run_daily_monitor(force: bool = False, db: Session = Depends(get_db)):
     runs. send_daily_telegram_monitor() dedups on today's report, so this is safe
     even if the in-process cron/catch-up also fired.
 
-    Returns whether a send happened this call and today's report status so the
-    caller (and logs) can see the outcome."""
+    build_daily_monitor_report() does ~20 sequential symbol fetches plus news/
+    FRED/LLM calls and can take well over a minute — long enough that it used
+    to blow past the external cron's --max-time 60 on a cold Render free-tier
+    instance (curl error 28, 0 bytes received, before the response ever came
+    back). This endpoint now returns immediately and runs the actual send in
+    a background task after the response is flushed, so the caller never times
+    out regardless of how long the report takes; send_daily_telegram_monitor's
+    own lock+dedup makes it safe if the next 5-min cron ping lands before this
+    one finishes."""
     from tasks.scheduler import send_daily_telegram_monitor, _already_sent_today, _local_today
 
     already = _already_sent_today(db)
     if already and not force:
         return {"ok": True, "sent_now": False, "already_sent_today": True, "report_date": _local_today()}
 
-    send_daily_telegram_monitor(force=force)
+    background_tasks.add_task(send_daily_telegram_monitor, force=force)
 
-    db.expire_all()  # re-read after the send wrote its MonitorReport rows
-    today = _local_today()
-
-    def _latest(report_type: str) -> dict | None:
-        row = (
-            db.query(MonitorReport)
-            .filter(MonitorReport.report_date == today, MonitorReport.report_type == report_type)
-            .order_by(desc(MonitorReport.created_at))
-            .first()
-        )
-        if not row:
-            return None
-        return {"status": row.status, "error": row.error, "channel_id": row.channel_id}
-
-    settings = get_settings()
     return {
         "ok": True,
-        "sent_now": True,
-        "forced": force,
-        "report_date": today,
-        # per-group outcome so you can see all targets in one call
-        "group1_bot1": _latest("daily_monitor"),
-        "group2_bot2": _latest("bot2_monitor"),
-        "bot2_configured": bool(settings.telegram_bot2_token and settings.telegram_bot2_channel_id),
-        "community_enabled": bool(
-            settings.telegram_community_report_enabled and settings.telegram_community_chat_id
-        ),
+        "queued": True,
+        "report_date": _local_today(),
+        "note": "Report generation queued in the background; it can take over a "
+                "minute. Check the Telegram channel or GET /telegram/status shortly, "
+                "or re-call this endpoint (it no-ops once today's report shows sent).",
     }
 
 

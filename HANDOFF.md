@@ -1,6 +1,78 @@
 # Agent Invest - Project Handoff
 
-Last updated: 2026-07-22 (Asia/Bangkok)
+Last updated: 2026-07-27 (Asia/Bangkok)
+
+## 2026-07-27 update: daily Telegram monitor was silently failing since ~2026-07-25
+
+**Symptom:** the owner noticed the daily monitor report (scheduled 08:30
+Asia/Bangkok, sent to the Telegram channel) had not arrived on 2026-07-27
+(the calendar-events alert still arrived, which is why it wasn't obvious the
+whole pipeline was down). Last successful send before that was 2026-07-25.
+
+**Root cause:** `POST /telegram/monitor/run` (the endpoint the external Render
+Cron Job `agent-invest-daily-trigger` hits every 5 min, 08:25-08:55
+Asia/Bangkok, to work around the backend's free-tier sleep) used to run
+`send_daily_telegram_monitor()` synchronously and only return once it
+finished. `build_daily_monitor_report()` does ~20 sequential per-symbol
+`yfinance` fetches plus news/FRED/LLM calls, which can take well over a
+minute — long enough to blow past the cron's `--max-time 60` on a cold
+Render free-tier instance. Confirmed live in the Render dashboard: the cron
+job's run history showed every invocation on 2026-07-27 failing with
+`curl: (28) Operation timed out after 60002 milliseconds with 0 bytes
+received` (exit status 28), i.e. the backend never got a chance to respond
+in time, not an auth/config problem. `GET /telegram/status` on the live
+backend confirmed config was correct throughout (`admin_token_configured`,
+`daily_report_enabled`, `daily_report_time: 08:30` all true/correct), which
+ruled out the `TELEGRAM_ADMIN_TOKEN` mismatch that an earlier pass's
+comments had flagged as the previously-seen failure mode.
+
+**Fix (uncommitted-file names below are now committed):**
+- `backend/api/telegram.py` — `run_daily_monitor` (`/telegram/monitor/run`)
+  now returns immediately (`{"ok": true, "queued": true, ...}`) and runs
+  `send_daily_telegram_monitor` via FastAPI `BackgroundTasks` instead of
+  blocking the HTTP response on the full report build. The external cron's
+  60s timeout can no longer be hit regardless of how long report generation
+  takes.
+- `backend/tasks/scheduler.py` — added a non-blocking `threading.Lock`
+  (`_monitor_send_lock`) around the actual send so overlapping triggers
+  (in-process 08:30 cron, 90s-after-boot catch-up, and the external cron's
+  repeated 5-min pings during its 30-min window) can't run
+  `build_daily_monitor_report()` concurrently and send duplicate reports if
+  one run is still in flight when the next trigger fires. Split the old
+  single function into a thin `send_daily_telegram_monitor` (lock guard) and
+  `_send_daily_telegram_monitor_locked` (the original body, unchanged).
+
+**Verification (this pass):** OneDrive-synced folders can corrupt a fresh
+`.venv` (per `AGENTS.md`), so verified in a clean copy at a plain local path
+instead of in place:
+- `python -m unittest discover -s tests -v`: 5/5 smoke tests still pass
+  unmodified.
+- Manual check with `fastapi.testclient.TestClient` (real `main.py` app,
+  SQLite, lifespan startup so `init_db()` runs): `POST /telegram/monitor/run`
+  with a valid `X-Admin-Token` returned HTTP 200 with `{"queued": true}` in
+  **0.047s**, and the background task was observed still running afterward
+  (real `yfinance` HTTP calls for the default watchlist symbols logged to
+  stdout after the response had already been returned) — direct evidence the
+  fix decouples the HTTP response from the report-build duration.
+- Did **not** verify the live Render cron job's next scheduled run in this
+  pass (would require waiting for/observing 08:25-08:55 Asia/Bangkok the
+  next day, or the owner manually triggering the cron job's "Run now" in the
+  Render dashboard after this deploy goes live) — next agent/owner should
+  confirm the next 08:xx run shows green in the Render cron job's run
+  history, and that the Telegram channel actually received that day's
+  report.
+
+**Not changed / still true:** the underlying reason `build_daily_monitor_report()`
+takes so long (sequential per-symbol fetches, sequential LLM calls) was not
+addressed — the fix only makes the timeout un-hittable, it doesn't make
+report generation faster. If the watchlist grows much further or `yfinance`/
+OpenRouter latency increases, generation time could grow further; this is
+fine as long as nothing external still assumes a synchronous, bounded-time
+response from `/telegram/monitor/run` (nothing currently does — grepped
+`frontend/` and `docs/` for callers, found none besides the Render cron).
+Parallelizing the per-symbol fetches in `build_watchlist_summary()` would
+reduce report-build latency directly if that's ever wanted, but was
+out of scope for this pass (pure timeout/robustness fix only).
 
 ## Current assessment
 
