@@ -1,11 +1,16 @@
 # Render Blueprint for Agent Invest MVP.
 # Deploy: push to GitHub, then Render -> New -> Blueprint -> select this repo.
 # Required secret: OPENROUTER_API_KEY on agent-invest-backend.
-
-databases:
-  - name: agent-invest-db
-    plan: free
-    postgresMajorVersion: "16"
+#
+# Database: Render's free Postgres (previously "agent-invest-db") expires
+# after ~90 days and was left to expire (2026-08). Moved to Supabase instead
+# — Supabase's free tier has no such expiry. DATABASE_URL is now a plain
+# secret (set manually in the Render dashboard) instead of `fromDatabase`,
+# since it no longer points at a Render-managed database. Use Supabase's
+# "Session pooler" connection string (port 5432, IPv4-compatible) — Render's
+# network egress is IPv4 and Supabase's direct connection is IPv6-only.
+# `init_db()` (backend/database.py) creates the schema + pgvector extension
+# automatically on first boot, so no manual migration step is needed.
 
 services:
   - type: web
@@ -18,9 +23,7 @@ services:
     autoDeploy: true
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: agent-invest-db
-          property: connectionString
+        sync: false
       - key: OPENROUTER_API_KEY
         sync: false
       - key: ADMIN_PASSWORD
