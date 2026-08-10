@@ -140,7 +140,7 @@ services:
     schedule: "25-55/5 1 * * *"
     plan: starter
     dockerCommand: >-
-      curl -fsS --max-time 60 -X POST
+      curl -fsS --max-time 120 -X POST
       -H "X-Admin-Token: $TELEGRAM_ADMIN_TOKEN"
       https://agent-invest-backend.onrender.com/telegram/monitor/run
     envVars:

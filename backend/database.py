@@ -4,11 +4,17 @@ from config import get_settings
 
 settings = get_settings()
 
+_connect_args = (
+    {"connect_timeout": 10}
+    if settings.database_url.startswith(("postgresql", "postgres"))
+    else {}
+)
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
+    connect_args=_connect_args,
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
