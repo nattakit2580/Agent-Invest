@@ -1,3 +1,5 @@
+import time
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -19,9 +21,28 @@ from config import get_settings
 settings = get_settings()
 
 
+def _init_db_with_retry(attempts: int = 5, delay: float = 5.0) -> None:
+    """Retry init_db() on transient DB connection failures (e.g. Supabase cold start)."""
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            init_db()
+            return
+        except Exception as exc:
+            last_exc = exc
+            if attempt < attempts:
+                print(
+                    f"[Startup] DB init attempt {attempt}/{attempts} failed: {exc!r}"
+                    f" — retrying in {delay:.0f}s"
+                )
+                time.sleep(delay)
+    print(f"[Startup] DB init failed after {attempts} attempts: {last_exc!r}")
+    raise last_exc  # type: ignore[misc]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    _init_db_with_retry()
     # Prime the per-agent model-override cache from the DB so the first analysis
     # doesn't pay a DB round-trip inside the agents.
     from services.agent_config import load_overrides
